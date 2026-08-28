@@ -610,8 +610,8 @@ export class SceneRuntime {
     r.control.enableRotate = sceneConfig.rotate;
     r.control.enableZoom = sceneConfig.zoom;
     r.control.enablePan = sceneConfig.pan;
-    r.control.autoRotate = sceneConfig.display === 'standard';
-    r.control.autoRotateSpeed = sceneConfig.rotationSpeed;
+    r.control.autoRotate = sceneConfig.display !== 'static';
+    r.control.autoRotateSpeed = sceneConfig.rotationSpeed * (sceneConfig.display === 'showcase' ? 1.65 : 1);
     r.control.dampingFactor = sceneConfig.display === 'showcase' ? 0.085 : 0.05;
     r.grid.visible = sceneConfig.grid;
     r.renderer.shadowMap.enabled = sceneConfig.shadows;
@@ -822,11 +822,6 @@ export class SceneRuntime {
         this._disposeObject(this.exitingModel);
         this.exitingModel = null;
       }
-    }
-
-    // Showcase 模式：模型自身旋转，阴影随旋转自然变化
-    if (sc.display === 'showcase' && this.entranceStart <= 0 && this.model && !this._press?.target) {
-      this.model.rotation.y += (sc.rotationSpeed || 0.3) * dt * 0.4;
     }
 
     // Press bounce spring (3D space squash & stretch)
