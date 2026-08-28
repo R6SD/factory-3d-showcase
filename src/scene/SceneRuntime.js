@@ -60,6 +60,8 @@ export class SceneRuntime {
     // Press bounce spring (3D space squash & stretch)
     this._press = { current: 0, target: 0, velocity: 0 };
     this._baseModelScale = new THREE.Vector3(1, 1, 1);
+    this._baseCameraZoom = 1;
+    this._lastFrameTime = performance.now();
 
     // Observers / handlers (bound for removal)
     this._observer = null;
@@ -443,7 +445,8 @@ export class SceneRuntime {
   pressBounce(active) {
     this._press.target = active ? 1 : 0;
     if (active) {
-      // 按下时快速压缩
+      // 按下时捕获当前相机 zoom 作为基准，避免覆盖用户手动缩放
+      this._baseCameraZoom = this.camera.zoom;
       this._press.velocity = 0;
     }
   }
@@ -752,7 +755,11 @@ export class SceneRuntime {
 
   _loop() {
     const sc = this._sceneConfig || {};
-    this.mixer?.update(0.016);
+    // 真实 delta time，适配不同刷新率
+    const frameNow = performance.now();
+    const dt = Math.min((frameNow - this._lastFrameTime) / 1000, 0.05);
+    this._lastFrameTime = frameNow;
+    this.mixer?.update(dt);
     this.control.update();
 
     // Conveyor animation
@@ -824,7 +831,6 @@ export class SceneRuntime {
       const p = this._press;
       // Spring physics: stiffness 200, damping 18 → 阻尼比 0.64，一次过冲后快速衰减
       const stiffness = 200, damping = 18, mass = 1;
-      const dt = 0.016;
       const force = -stiffness * (p.current - p.target) - damping * p.velocity;
       p.velocity += (force / mass) * dt;
       p.current += p.velocity * dt;
@@ -833,10 +839,12 @@ export class SceneRuntime {
 
       // Apply: camera zoom in (space compression) + model scale down
       const pressVal = p.current;
-      const zoomFactor = 1 + pressVal * 0.18;
+      if (Math.abs(pressVal) > 0.001) {
+        // 基于按压开始时的基础 zoom，避免覆盖用户手动缩放
+        this.camera.zoom = this._baseCameraZoom * (1 + pressVal * 0.18);
+        this.camera.updateProjectionMatrix();
+      }
       const scaleFactor = 1 - pressVal * 0.07;
-      this.camera.zoom = zoomFactor;
-      this.camera.updateProjectionMatrix();
       const ts = this.model.userData.tScale || this._baseModelScale;
       this.model.scale.set(ts.x * scaleFactor, ts.y * scaleFactor, ts.z * scaleFactor);
     }
