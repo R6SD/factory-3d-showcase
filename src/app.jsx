@@ -82,7 +82,7 @@ function ModelSwitcher() {
 
     const setViewerPress = (pressed) => {
       // 调用 SceneRuntime 的 3D 空间按压回弹（相机 zoom + 模型 scale 联动）
-      rt.current?.pressBounce(pressed);
+      window.__factorySceneRuntime?.pressBounce(pressed);
     };
 
     const onTouchStart = e => {

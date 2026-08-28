@@ -974,6 +974,7 @@ export class SceneRuntime {
       getCameraDirection: () => rt.getCameraDirection(),
       projectPoint: (local) => rt.projectPoint(local),
       raycast: (x, y) => rt.raycast(x, y),
+      pressBounce: (active) => rt.pressBounce(active),
     };
     window.__factorySetView = (p) => rt.setView(p);
     window.__factoryScreenshot = () => rt.screenshot();
