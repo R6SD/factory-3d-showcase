@@ -46,12 +46,9 @@ export function createFactoryModel() {
     g.add(m);
   };
 
-  // Floor platform (纯黑 MeshBasicMaterial，不受光照影响，真正纯黑)
-  const blackBasic = new THREE.MeshBasicMaterial({ color: 0x000000 });
-  const fb = new THREE.Mesh(new THREE.BoxGeometry(18, 0.4, 14), blackBasic);
-  fb.position.set(0, -0.2, 0); fb.receiveShadow = true; g.add(fb);
-  const ft = new THREE.Mesh(new THREE.BoxGeometry(18, 0.06, 14), blackBasic);
-  ft.position.set(0, 0.03, 0); ft.receiveShadow = true; g.add(ft);
+  // Floor platform (深色，可接收阴影)
+  box(18, 0.4, 14, 0, -0.4, 0, 0x0a0f18, { roughness: 0.9 });
+  box(18, 0.06, 14, 0, 0, 0, 0x0d1520, { roughness: 0.85 });
   for (let x = -8; x <= 8; x += 2) box(0.06, 0.02, 14, x, 0.03, 0, 0x2a4a70);
   for (let z = -6; z <= 6; z += 2) box(18, 0.02, 0.06, 0, 0.03, z, 0x1a3a5c);
 
@@ -288,7 +285,7 @@ export class SceneRuntime {
     this.scene.add(this.grid);
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(24, 18),
-      new THREE.MeshBasicMaterial({ color: 0x000000 })
+      new THREE.MeshStandardMaterial({ color: 0x080c14, roughness: 0.95, metalness: 0.05 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.01;
@@ -642,18 +639,25 @@ export class SceneRuntime {
       const loaded = await loadModelFile(file);
       next = loaded.object;
       this.mixer = loaded.mixer;
-      // 导入模型统一启用阴影投射与接收，并确保材质支持光照
+      // 导入模型统一启用阴影，转换不支持光照的材质
       next.traverse((o) => {
         if (o.isMesh) {
           o.castShadow = true;
           o.receiveShadow = true;
-          // MeshBasicMaterial 不响应光照和阴影，转换为 Standard
-          if (o.material && !o.material.isMeshStandardMaterial && !o.material.isMeshPhysicalMaterial) {
-            const old = o.material;
-            const params = { color: old.color?.clone?.() || 0xffffff, roughness: 0.6, metalness: 0.1 };
-            if (old.map) params.map = old.map;
-            if (old.transparent) { params.transparent = true; params.opacity = old.opacity; }
-            o.material = new THREE.MeshStandardMaterial(params);
+          const convert = (m) => {
+            if (!m) return m;
+            if (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial) return m;
+            const params = { color: m.color?.clone?.() || 0xffffff, roughness: 0.6, metalness: 0.1 };
+            if (m.map) params.map = m.map;
+            if (m.normalMap) params.normalMap = m.normalMap;
+            if (m.transparent) { params.transparent = true; params.opacity = m.opacity; }
+            if (m.side) params.side = m.side;
+            return new THREE.MeshStandardMaterial(params);
+          };
+          if (Array.isArray(o.material)) {
+            o.material = o.material.map(convert);
+          } else {
+            o.material = convert(o.material);
           }
         }
       });
