@@ -610,8 +610,8 @@ export class SceneRuntime {
     r.control.enableRotate = sceneConfig.rotate;
     r.control.enableZoom = sceneConfig.zoom;
     r.control.enablePan = sceneConfig.pan;
-    r.control.autoRotate = sceneConfig.display !== 'static';
-    r.control.autoRotateSpeed = sceneConfig.rotationSpeed * (sceneConfig.display === 'showcase' ? 1.65 : 1);
+    r.control.autoRotate = sceneConfig.display === 'standard';
+    r.control.autoRotateSpeed = sceneConfig.rotationSpeed;
     r.control.dampingFactor = sceneConfig.display === 'showcase' ? 0.085 : 0.05;
     r.grid.visible = sceneConfig.grid;
     r.renderer.shadowMap.enabled = sceneConfig.shadows;
@@ -639,6 +639,10 @@ export class SceneRuntime {
       const loaded = await loadModelFile(file);
       next = loaded.object;
       this.mixer = loaded.mixer;
+      // 导入模型统一启用阴影投射与接收
+      next.traverse((o) => {
+        if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }
+      });
       if (this.model) {
         this.exitingModel = this.model;
         this.exitingModel.userData.exitStart = performance.now();
@@ -820,6 +824,11 @@ export class SceneRuntime {
       }
     }
 
+    // Showcase 模式：模型自转（阴影随模型旋转自然变化）
+    if (sc.display === 'showcase' && this.entranceStart <= 0 && this.model) {
+      this.model.rotation.y += (sc.rotationSpeed || 0.3) * dt * 0.5;
+    }
+
     // Press bounce spring (3D space squash & stretch)
     // 只在入场动画结束后应用，避免冲突
     if (this.entranceStart <= 0 && this.model) {
@@ -855,7 +864,7 @@ export class SceneRuntime {
       this._sunCache.z = Math.cos(a);
     }
     const e = this._sunCache.e, z = this._sunCache.z;
-    if (sc.sunCycle !== false) {
+    if (sc.sunCycle !== false || sc.sunManual) {
       if (sc.sunManual) {
         const az = sc.sunAzimuth * Math.PI / 180;
         const el = sc.sunElevation * Math.PI / 180;
