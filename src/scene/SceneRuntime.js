@@ -639,25 +639,36 @@ export class SceneRuntime {
       const loaded = await loadModelFile(file);
       next = loaded.object;
       this.mixer = loaded.mixer;
-      // 导入模型统一启用阴影，转换不支持光照的材质
+      // 导入模型：统一启用阴影 + 转换不支持光照的材质
       next.traverse((o) => {
         if (o.isMesh) {
           o.castShadow = true;
           o.receiveShadow = true;
-          const convert = (m) => {
+          o.frustumCulled = false;
+          const toStandard = (m) => {
             if (!m) return m;
             if (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial) return m;
-            const params = { color: m.color?.clone?.() || 0xffffff, roughness: 0.6, metalness: 0.1 };
-            if (m.map) params.map = m.map;
-            if (m.normalMap) params.normalMap = m.normalMap;
-            if (m.transparent) { params.transparent = true; params.opacity = m.opacity; }
-            if (m.side) params.side = m.side;
-            return new THREE.MeshStandardMaterial(params);
+            const p = {
+              color: (m.color && m.color.clone) ? m.color.clone() : new THREE.Color(0xffffff),
+              roughness: 0.65, metalness: 0.15,
+            };
+            if (m.map) p.map = m.map;
+            if (m.normalMap) p.normalMap = m.normalMap;
+            if (m.roughnessMap) p.roughnessMap = m.roughnessMap;
+            if (m.metalnessMap) p.metalnessMap = m.metalnessMap;
+            if (m.aoMap) p.aoMap = m.aoMap;
+            if (m.emissive && m.emissive.clone) { p.emissive = m.emissive.clone(); p.emissiveIntensity = m.emissiveIntensity || 0; }
+            if (m.transparent) { p.transparent = true; p.opacity = m.opacity; }
+            if (m.side) p.side = m.side;
+            if (m.alphaTest) p.alphaTest = m.alphaTest;
+            const nm = new THREE.MeshStandardMaterial(p);
+            nm.needsUpdate = true;
+            return nm;
           };
           if (Array.isArray(o.material)) {
-            o.material = o.material.map(convert);
+            o.material = o.material.map(toStandard);
           } else {
-            o.material = convert(o.material);
+            o.material = toStandard(o.material);
           }
         }
       });
@@ -671,6 +682,10 @@ export class SceneRuntime {
       this.scene.add(next);
       this.model = next;
       this._fit(this.model);
+      // 强制阴影贴图更新，确保导入模型立即有阴影
+      this.sun.shadow.needsUpdate = true;
+      this.renderer.shadowMap.needsUpdate = true;
+      this._needsRender = true;
       this.model.userData.tScale = this.model.scale.clone();
       this.model.userData.tPos = this.model.position.clone();
       this.model.userData.tRot = this.model.rotation.clone();
