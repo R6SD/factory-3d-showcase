@@ -1,0 +1,413 @@
+/* ===== 全局触摸屏支持 ===== */
+*{ -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+html,body{ overscroll-behavior: none; touch-action: manipulation; }
+body{ user-select: none; -webkit-user-select: none; }
+input,textarea,[contenteditable]{ user-select: text; -webkit-user-select: text; }
+button,a,[role=button]{ touch-action: manipulation; }
+.viewer,.three,canvas{ touch-action: none; }
+.model-map-pin,.sun-disk{ touch-action: none; }
+
+/* Navigation states */
+.nav-overlay aside{transform:none!important;width:12px!important;overflow:visible!important;transition:width .18s ease!important}
+.nav-overlay aside>*{opacity:0;pointer-events:none;transition:opacity .12s ease}
+.nav-overlay aside:hover{width:216px!important}
+.nav-overlay aside:hover>*{opacity:1;pointer-events:auto}
+.nav-overlay aside:hover span{display:inline}
+.nav-overlay main{margin-left:0}
+.nav-state{position:absolute;bottom:7px;left:0;right:0;margin:0;text-align:center;color:var(--muted);font-size:9px}
+.nav-open .nav-state{display:none}
+
+/* Results exist only while the search input is focused; selecting an item uses onMouseDown. */
+.global-search:has(input:not(:focus)) .search-list{display:none}
+.global-search:has(input:placeholder-shown) .search-list{display:none}
+
+/* Remove header utilities and the Mini status marker, as requested. */
+.global-search,.actions>.icon,.actions>.user,.nav-state{display:none!important}
+
+/* Centered viewer heading; changes are managed in Settings. */
+.viewer-top{justify-content:center!important;text-align:center!important;pointer-events:none}
+.viewer-top>div:first-child{min-width:260px;padding:10px 18px}
+.viewer-top>div:first-child h2{font-size:20px!important}
+.viewer-top .importer{position:absolute;right:20px;pointer-events:auto}
+
+.viewer-title-settings{display:grid;gap:10px;margin:4px 0 12px;padding:14px;border:1px solid var(--line);background:color-mix(in srgb,var(--panel2) 82%,transparent)}
+.viewer-title-settings h3{margin:0;color:var(--text);font-size:14px}
+.viewer-title-settings p{margin:0;color:var(--muted);font-size:12px;line-height:1.55}
+.viewer-title-settings label{display:grid;gap:6px;color:var(--muted);font-size:12px}
+.viewer-title-settings input{width:100%;box-sizing:border-box}
+
+/* Brand icon upload replaces the former logo text. */
+.brand:has(.custom-brand-icon)>svg{display:none}
+.custom-brand-icon{width:28px;height:28px;object-fit:contain;flex:0 0 28px}
+.brand-icon-settings{display:grid;gap:10px;margin:4px 0 12px;padding:14px;border:1px solid var(--line);background:color-mix(in srgb,var(--panel2) 82%,transparent)}
+.brand-icon-settings h3{margin:0;color:var(--text);font-size:14px}
+.brand-icon-settings p{margin:0;color:var(--muted);font-size:12px;line-height:1.55}
+.brand-icon-settings input{max-width:100%;color:var(--muted);font-size:12px}
+.brand-icon-settings button{justify-self:start;padding:7px 10px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer}
+.brand-icon-preview{display:grid;place-items:center;width:62px;height:62px;border:1px dashed var(--accent);background:#040d1e}
+.brand-icon-preview img{width:48px;height:48px;object-fit:contain}
+
+/* ===== 3D 地图钉标签（Map Pin Style） ===== */
+.model-label-layer{position:absolute;inset:0;z-index:6;pointer-events:none;overflow:visible}
+.model-map-pin{position:absolute;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center;pointer-events:auto;cursor:pointer;touch-action:none;z-index:6;transition:opacity .2s,filter .2s}
+.model-map-pin:active{cursor:grabbing}
+.model-map-pin.dragging{z-index:12;filter:drop-shadow(0 10px 28px rgba(91,140,255,.55))}
+.pin-label{position:relative;padding:8px 16px 8px 14px;border:1px solid rgba(140,190,255,.28);border-radius:12px;background:linear-gradient(145deg,rgba(16,34,58,.94),rgba(7,16,32,.97));backdrop-filter:blur(16px) saturate(1.4);color:#f0f6ff;font:600 12.5px/1.35 "Noto Sans SC",sans-serif;letter-spacing:.015em;white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 6px 24px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.06) inset,0 0 30px rgba(91,140,255,.12),0 1px 0 rgba(255,255,255,.08) inset;transition:border-color .2s,box-shadow .25s,background .2s,transform .2s cubic-bezier(.34,1.56,.64,1)}
+.model-map-pin:hover .pin-label{border-color:rgba(160,210,255,.55);background:linear-gradient(145deg,rgba(22,46,76,.96),rgba(10,24,44,.98));box-shadow:0 10px 32px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.1) inset,0 0 40px rgba(91,140,255,.22),0 1px 0 rgba(255,255,255,.12) inset;transform:translateY(-2px) scale(1.03)}
+.pin-label::before{content:"";position:absolute;left:0;top:7px;bottom:7px;width:3.5px;border-radius:0 3px 3px 0;background:linear-gradient(180deg,#A5D4FF 0%,#6EA8FF 50%,#4A80E0 100%);box-shadow:0 0 12px rgba(110,168,255,.6),0 0 4px rgba(165,212,255,.8)}
+.pin-label::after{content:"";position:absolute;left:8px;right:8px;top:0;height:1px;background:linear-gradient(90deg,transparent,rgba(180,220,255,.25),transparent);pointer-events:none}
+.pin-tail{width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid rgba(140,190,255,.32);margin-top:-1px;filter:drop-shadow(0 3px 4px rgba(0,0,0,.4))}
+.pin-dot{width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 32% 25%,#ffffff 0%,#C8E0FF 25%,#7AB0FF 55%,#4A80E0 100%);box-shadow:0 0 12px #7AB0FF,0 0 24px rgba(122,176,255,.55),0 3px 8px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.2) inset;margin-top:-2px;flex-shrink:0;position:relative;transition:transform .2s cubic-bezier(.34,1.56,.64,1)}
+.model-map-pin:hover .pin-dot{transform:scale(1.2)}
+.pin-dot::before{content:"";position:absolute;inset:-6px;border-radius:50%;border:2px solid rgba(150,200,255,.5);animation:pin-pulse 2.4s ease-in-out infinite}
+.pin-dot::after{content:"";position:absolute;inset:-3px;border-radius:50%;background:radial-gradient(circle,rgba(165,212,255,.35),transparent 70%);animation:pin-glow 3.2s ease-in-out infinite}
+@keyframes pin-pulse{0%,100%{opacity:.12;transform:scale(.65)}50%{opacity:.5;transform:scale(1.3)}}
+@keyframes pin-glow{0%,100%{opacity:.25}50%{opacity:.65}}
+
+/* 标签编辑面板 */
+.model-label-editor{position:absolute;left:12px;top:12px;right:auto;display:grid;gap:12px;width:248px;padding:18px;border:1px solid rgba(120,170,255,.22);border-radius:14px;background:linear-gradient(160deg,rgba(12,30,54,.96),rgba(6,14,28,.98));backdrop-filter:blur(18px);box-shadow:0 20px 52px rgba(0,0,0,.52),0 0 0 1px rgba(255,255,255,.05) inset;pointer-events:auto;z-index:20}
+.model-label-editor[hidden]{display:none!important}
+.model-label-editor b{color:#eaf2ff;font-size:13px;font-weight:600;letter-spacing:.03em}
+.model-label-editor small{color:#7d93b8;font-size:11px;line-height:1.55}
+.model-label-editor label{display:grid;gap:6px;color:#93b3d8;font-size:11px}
+.model-label-editor input{width:100%;box-sizing:border-box;border:1px solid rgba(120,160,255,.18);border-radius:8px;background:rgba(3,10,22,.85);color:white;padding:10px 11px;font:12px "Noto Sans SC";outline:none;transition:border-color .15s,box-shadow .15s}
+.model-label-editor input:focus{border-color:#5B8CFF;box-shadow:0 0 0 3px rgba(91,140,255,.14)}
+.model-label-editor button{padding:9px 13px;border:1px solid rgba(120,160,255,.18);border-radius:8px;background:rgba(10,22,44,.85);color:#cfe0ff;font:12px "Noto Sans SC",sans-serif;cursor:pointer;transition:all .15s}
+.model-label-editor button:hover{border-color:#5B8CFF;background:rgba(20,45,80,.92);color:#eaf2ff}
+.model-label-editor .remove{color:#ff9b9b;border-color:rgba(255,107,107,.28)}
+.model-label-editor .remove:hover{border-color:#ff6b6b;background:rgba(60,15,20,.92);color:#ffd5d5}
+
+/* 标签显隐切换按钮 */
+.view-actions .label-toggle{display:flex;align-items:center;gap:6px;padding:6px 11px;border:1px solid rgba(91,140,255,.3);border-radius:6px;background:rgba(10,22,44,.7);color:#cfe0ff;font:11px "Noto Sans SC";cursor:pointer;transition:all .15s}
+.view-actions .label-toggle:hover{border-color:rgba(120,170,255,.5);color:#eaf2ff;background:rgba(20,45,80,.8)}
+.view-actions .label-toggle.inactive{opacity:.55;border-color:rgba(100,130,170,.25);color:#6a86a8}
+.label-toggle-icon{width:8px;height:8px;border-radius:50%;background:#6EA8FF;box-shadow:0 0 5px #6EA8FF;display:inline-block}
+.label-toggle.inactive .label-toggle-icon{background:#5a7390;box-shadow:none}
+.viewer.labels-hidden .model-label-layer{display:none!important}
+
+/* ===== 设置页面模型预览 ===== */
+.scene-settings-layout{display:grid;grid-template-columns:minmax(320px,420px) 1fr;gap:20px;align-items:start}
+.scene-settings-layout .scene-form{grid-column:auto;max-width:none}
+.scene-preview{position:relative;width:100%;min-height:820px;border:1px solid var(--line);border-radius:8px;background:linear-gradient(160deg,#040d1e,#0a1830);overflow:hidden;box-shadow:inset 0 0 60px #2F6FEB08}
+.scene-preview canvas{display:block;width:100%!important;height:100%!important;position:absolute;inset:0}
+.preview-badge{position:absolute;top:12px;left:12px;padding:4px 10px;border:1px solid #2f5d99;border-radius:3px;background:#0a1c36f0;color:#9CC5FF;font:11px "Noto Sans SC";letter-spacing:.08em;z-index:2;pointer-events:none}
+.preview-hint{position:absolute;bottom:12px;right:14px;color:#5a7390;font:10.5px "Noto Sans SC";letter-spacing:.05em;z-index:2;pointer-events:none}
+@media(max-width:900px){.scene-settings-layout{grid-template-columns:1fr}.scene-preview{min-height:320px}}
+
+/* Model library selection and organization search. */
+.model-grid article.selected{border-color:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 35%,transparent)}
+.model-grid footer>div{display:flex;gap:8px}.model-grid footer button{cursor:pointer}.model-grid .remove-model{color:#ff9b9b!important}
+.model-grid footer button:disabled{cursor:not-allowed;opacity:.48}.model-grid .model-missing{color:#ffb26b}
+.org-search{position:relative}.org-results{position:absolute;top:38px;left:0;z-index:4;width:300px;padding:5px;border:1px solid var(--line);background:var(--panel);box-shadow:0 12px 24px #0008}.org-results button{width:100%;display:grid;gap:2px;border:0;background:transparent;color:var(--text);padding:8px;text-align:left;cursor:pointer}.org-results button:hover{background:var(--panel2)}.org-results small{color:var(--muted);font:11px "Noto Sans SC"}
+.model-search{display:inline-flex;align-items:center;gap:5px;margin-left:auto;padding:4px 9px;border:1px solid var(--line);border-radius:3px;background:var(--panel2);color:var(--muted)}
+.model-search input{width:110px;border:0;background:transparent;color:var(--text);font:12px "Noto Sans SC";outline:none}
+.model-search input::placeholder{color:var(--muted);opacity:.7}
+.model-filter{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.model-filter small{margin-left:auto}
+
+.service-exit{border:1px solid #84505c;background:#25111b;color:#ffd5da;padding:7px 10px;font:12px "Noto Sans SC";cursor:pointer}.service-exit:hover{border-color:#ff8e9e;background:#3b1522}.service-exit:disabled{opacity:.65;cursor:wait}.service-exit span{font-size:15px}.service-closed{min-height:100vh;display:grid;place-content:center;text-align:center;background:#061120;color:#e9f8ff;font-family:"Noto Sans SC"}.service-closed p{color:#7d93b8}
+
+/* Complete scene settings layout */
+.scene-form{grid-template-columns:repeat(2,minmax(0,1fr));max-width:760px}
+.scene-form>label:first-child,.scene-form>label:nth-child(3),.scene-form .toggle-grid{grid-column:1/-1}
+.toggle-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding-top:4px}
+.toggle{display:flex!important;align-items:center;justify-content:space-between;padding:9px;background:var(--panel2);border:1px solid var(--line);font:12px "Noto Sans SC"}
+.toggle input{position:absolute;opacity:0}.toggle i{width:26px;height:14px;background:#29486e;border-radius:8px;position:relative}.toggle i:after{content:"";position:absolute;width:10px;height:10px;left:2px;top:2px;border-radius:50%;background:#8aa8c8;transition:.15s}.toggle input:checked+i{background:var(--accent)}.toggle input:checked+i:after{left:14px;background:#eaf2ff}
+
+/* ===== Spline Effects 风格效果层 =====
+   借鉴 Spline Hana Effects 体系：
+   Liquid Glass / Background Blur / Drop & Inner Shadow / Layer Noise / 3D Projection
+   ===== */
+
+/* —— 全局层次阴影 + 内高光（Drop/Inner Shadow）—— */
+.card{background:linear-gradient(180deg,color-mix(in srgb,var(--panel) 90%,#12345a),var(--panel));border-color:color-mix(in srgb,var(--line) 82%,transparent);border-radius:7px;box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 7%,transparent),0 10px 28px rgba(0,0,0,.16),0 2px 6px rgba(0,0,0,.2)}
+header{background:color-mix(in srgb,var(--bg) 72%,transparent);backdrop-filter:blur(14px) saturate(1.4);box-shadow:0 1px 0 var(--line),0 10px 30px rgba(0,0,0,.2)}
+aside{background:color-mix(in srgb,var(--panel) 76%,transparent);backdrop-filter:blur(14px) saturate(1.35)}
+aside a.active,aside a:hover{background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 18%,transparent),color-mix(in srgb,#153c52 90%,transparent));box-shadow:inset 3px 0 var(--accent),0 0 18px color-mix(in srgb,var(--accent) 26%,transparent)}
+.primary{box-shadow:0 5px 18px color-mix(in srgb,var(--accent) 30%,transparent),inset 0 1px 0 rgba(255,255,255,.32)}
+.primary:hover{box-shadow:0 8px 28px color-mix(in srgb,var(--accent) 46%,transparent),inset 0 1px 0 rgba(255,255,255,.45)}
+
+/* —— 操作栏 / 通知 / 菜单：Background Blur 毛玻璃 —— */
+.view-actions{background:rgba(6,16,34,.52);backdrop-filter:blur(14px) saturate(1.5);border-radius:9px;border-color:rgba(120,160,255,.2);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 10px 30px rgba(0,0,0,.32)}
+.view-actions button{border-radius:6px;border-color:rgba(91,140,255,.35);background:rgba(18,57,78,.6)}
+.view-actions button:hover{background:rgba(30,84,110,.75);border-color:rgba(120,170,255,.55)}
+.notice{background:rgba(10,30,56,.6);backdrop-filter:blur(12px) saturate(1.4);border-radius:7px;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 10px 28px rgba(0,0,0,.4),0 0 20px rgba(47,111,235,.14)}
+.import-menu,.search-list,.drawer{backdrop-filter:blur(16px) saturate(1.5);background:color-mix(in srgb,var(--panel) 86%,transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 18px 40px rgba(0,0,0,.4)}
+
+/* —— 场景氛围：Layer Noise 噪点纹理 —— */
+.viewer::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;background-image:radial-gradient(rgba(255,255,255,.035) 1px,transparent 1px);background-size:5px 5px;mix-blend-mode:overlay}
+.viewer .model-label-layer{z-index:6}
+
+/* —— 设置预览面板玻璃 —— */
+.scene-preview{border-color:rgba(120,160,255,.2);box-shadow:inset 0 0 70px rgba(47,111,235,.06),inset 0 1px 0 rgba(255,255,255,.07),0 16px 40px rgba(0,0,0,.32)}
+.preview-badge{background:rgba(8,20,40,.72);backdrop-filter:blur(10px) saturate(1.4);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 0 14px rgba(47,111,235,.2);border-radius:5px}
+
+/* —— 模型卡片：层次阴影 + 悬浮抬升 —— */
+.model-grid article{border-radius:6px;background:linear-gradient(180deg,color-mix(in srgb,var(--panel2) 92%,#0e2c4e),var(--panel2));box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 8px 22px rgba(0,0,0,.16);transition:transform .18s,box-shadow .18s,border-color .18s}
+.model-grid article:hover{transform:translateY(-2px);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 14px 32px rgba(0,0,0,.26),0 0 18px color-mix(in srgb,var(--accent) 16%,transparent)}
+.model-grid article.selected{box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 0 0 1px color-mix(in srgb,var(--accent) 45%,transparent),0 0 24px color-mix(in srgb,var(--accent) 26%,transparent)}
+.thumb{background:radial-gradient(circle at 50% 34%,#1e4a78,#0b2130 78%);box-shadow:inset 0 -10px 24px rgba(0,0,0,.35)}
+
+.online-scene-overlay{position:fixed;inset:0;z-index:1000;background:rgba(3,8,18,.84);backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);display:flex;align-items:center;justify-content:center;padding:28px;animation:onlineFade .25s ease}
+.online-scene-panel{width:100%;max-width:1200px;height:88vh;background:#0a1420;border:1px solid rgba(91,140,255,.2);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 28px 80px rgba(0,0,0,.65),0 0 0 1px rgba(255,255,255,.04) inset,0 12px 44px rgba(47,111,235,.07)}
+.online-scene-head{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid rgba(91,140,255,.16);background:linear-gradient(180deg,rgba(16,32,60,.7),rgba(6,14,28,.25));flex:0 0 auto}
+.online-scene-head b{font-size:14px;letter-spacing:.06em;background:linear-gradient(90deg,#8FB6FF,#34d399);-webkit-background-clip:text;background-clip:text;color:transparent}
+.online-scene-head button{display:inline-flex;align-items:center;gap:6px;background:rgba(140,160,200,.08);border:1px solid rgba(140,160,200,.18);color:#cbd5e1;border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer;transition:.2s}
+.online-scene-head button:hover{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.4);color:#fca5a5}
+.online-scene-panel iframe{flex:1;width:100%;border:0;background:#000;min-height:0}
+@keyframes onlineFade{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:none}}
+
+.online-scene-setting{display:flex;flex-direction:column;gap:8px;padding:14px;border:1px solid rgba(91,140,255,.14);border-radius:12px;background:linear-gradient(180deg,rgba(14,26,46,.35),rgba(6,14,28,.15));margin-top:4px}
+.online-scene-setting>b{font-size:13px;letter-spacing:.05em;color:#A8C6FF}
+.online-scene-setting label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:#94a3b8}
+.online-scene-setting input{background:rgba(6,14,28,.7);border:1px solid rgba(140,160,200,.22);color:#e2e8f0;border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:inherit;transition:.2s}
+.online-scene-setting input:focus{outline:none;border-color:rgba(91,140,255,.55);box-shadow:0 0 0 3px rgba(91,140,255,.12)}
+.online-scene-setting p{font-size:11.5px;color:#64748b;line-height:1.55;margin:0}
+
+/* ===== 数字孪生 Web3D 大屏主题增强（黑→深蓝） =====
+   借鉴 MotionSites premium 提示词：Cortex 深蓝辉光 / 液态玻璃 / 等宽技术字体 */
+.viewer-page{background:radial-gradient(1200px 620px at 50% 30%,rgba(22,52,98,.5),transparent 60%),radial-gradient(circle at 50% 38%,#0d2444,#020715 78%)}
+.metric,.drawer .huge{font-family:"JetBrains Mono","Noto Sans SC",monospace;letter-spacing:-.02em}
+.viewer-top small,.notice{font-family:"JetBrains Mono","Noto Sans SC",monospace}
+.card-head h2,.viewer-top h2{letter-spacing:.03em}
+.primary,.secondary,.danger{letter-spacing:.04em}
+aside a.active{box-shadow:inset 3px 0 var(--accent),0 0 18px color-mix(in srgb,var(--accent) 30%,transparent)}
+
+/* ===== 通透清新增强：玻璃模糊 + 景深光晕 ===== */
+aside{backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);background:rgba(15,25,45,.52)!important;border-right-color:rgba(100,150,220,.2)}
+header{backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16px) saturate(1.3);background:rgba(12,22,42,.55)!important;border-bottom-color:rgba(100,150,220,.18)}
+.card{backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3);background:rgba(20,30,50,.5)!important;border-color:rgba(100,150,220,.2);box-shadow:0 12px 32px rgba(0,0,0,.22)}
+.viewer-page{background:#000000!important}
+.scene-preview{background:radial-gradient(ellipse 70% 55% at 50% 45%,#0f2547,#06101e 80%)!important}
+.settings>nav{backdrop-filter:blur(14px);background:rgba(15,25,45,.52)!important}
+
+/* ===== 语言切换按钮 ===== */
+.lang-toggle{display:flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid rgba(100,150,220,.3);border-radius:6px;background:rgba(20,35,60,.5);color:var(--accent);cursor:pointer;transition:all .2s;font:12px "Noto Sans SC"}
+.lang-toggle:hover{border-color:var(--accent);background:rgba(30,60,100,.6);box-shadow:0 0 12px rgba(107,159,255,.25)}
+.lang-toggle span{font-weight:600;letter-spacing:.05em}
+
+/* ===== 加载遮罩 ===== */
+.loading-overlay{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(3,10,24,.72);backdrop-filter:blur(8px);animation:fadeIn .25s ease}
+.loading-spinner{width:48px;height:48px;border:3px solid rgba(107,159,255,.2);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;box-shadow:0 0 20px rgba(107,159,255,.3)}
+.loading-overlay p{margin-top:16px;color:#cfe0ff;font:13px "Noto Sans SC";letter-spacing:.05em}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+/* ===== 拖拽导入指示 ===== */
+.viewer.drag-over .three{filter:brightness(.7)}
+.drop-zone{position:absolute;inset:20px;z-index:15;display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px dashed var(--accent);border-radius:12px;background:rgba(10,30,60,.55);backdrop-filter:blur(6px);animation:dropPulse 1.2s ease-in-out infinite}
+.drop-icon{font-size:48px;color:var(--accent);filter:drop-shadow(0 0 12px rgba(107,159,255,.6));animation:dropBounce 1s ease-in-out infinite}
+.drop-zone p{margin:12px 0 4px;color:#eaf2ff;font:600 16px "Noto Sans SC";letter-spacing:.06em}
+.drop-zone small{color:var(--muted);font:11px "Noto Sans SC"}
+@keyframes dropPulse{0%,100%{border-color:rgba(107,159,255,.5);background:rgba(10,30,60,.45)}50%{border-color:var(--accent);background:rgba(10,40,80,.6)}}
+@keyframes dropBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+
+/* ===== 产能图表动画 ===== */
+.fake-chart{display:flex;align-items:flex-end;justify-content:space-around;height:180px;padding:16px 8px 0;gap:8px}
+.fake-chart>div{flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;justify-content:flex-end}
+.fake-chart i{display:block;width:100%;max-width:36px;border-radius:4px 4px 0 0;background:linear-gradient(180deg,var(--accent),#2a5a9a);box-shadow:0 0 12px rgba(107,159,255,.3);animation:barGrow .8s cubic-bezier(.34,1.56,.64,1) both;transform-origin:bottom}
+.fake-chart>div:nth-child(1) i{animation-delay:.05s}
+.fake-chart>div:nth-child(2) i{animation-delay:.15s}
+.fake-chart>div:nth-child(3) i{animation-delay:.25s}
+.fake-chart>div:nth-child(4) i{animation-delay:.35s}
+.fake-chart>div:nth-child(5) i{animation-delay:.45s}
+.fake-chart small{color:var(--muted);font:10px "JetBrains Mono",monospace}
+@keyframes barGrow{from{transform:scaleY(0);opacity:0}to{transform:scaleY(1);opacity:1}}
+
+/* ===== 指标数字动画 ===== */
+.metric{display:block;font-size:30px;background:linear-gradient(135deg,#eaf2ff,var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent;animation:numFadeIn .6s ease both}
+@keyframes numFadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* ===== 空状态 ===== */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center;color:var(--muted)}
+.empty-state svg{color:var(--accent);opacity:.5;margin-bottom:16px}
+.empty-state h3{margin:0 0 8px;color:var(--text);font:600 15px "Noto Sans SC"}
+.empty-state p{margin:0;font:12px "Noto Sans SC";max-width:320px;line-height:1.6}
+
+/* ===== 卡片悬浮微交互增强 ===== */
+.card{transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease}
+.card:hover{border-color:color-mix(in srgb,var(--accent) 30%,var(--line))}
+
+/* ===== 按钮涟漪 ===== */
+.primary,.secondary{position:relative;overflow:hidden;transition:all .2s ease}
+.primary:active,.secondary:active{transform:scale(.97)}
+
+/* ===== 产线列表悬浮 ===== */
+.line-list button{transition:background .15s ease,padding-left .15s ease}
+.line-list button:hover{background:var(--panel2);padding-left:6px}
+
+/* ===== 模型卡片缩略图渐变 ===== */
+.thumb{position:relative;overflow:hidden}
+.thumb::after{content:"";position:absolute;inset:0;background:linear-gradient(135deg,transparent 40%,rgba(107,159,255,.08) 100%);pointer-events:none}
+
+/* ===== 指南针美化 ===== */
+.compass{width:42px;height:42px;border:1px solid rgba(107,159,255,.4);border-radius:50%;color:var(--accent);text-align:center;padding-top:11px;font:700 12px "JetBrains Mono",monospace;background:rgba(6,18,36,.6);backdrop-filter:blur(6px);box-shadow:0 0 12px rgba(107,159,255,.15),inset 0 1px 0 rgba(255,255,255,.08);letter-spacing:.05em}
+
+/* ===== 查看器页脚 ===== */
+.viewer-page>footer{background:rgba(4,12,28,.85);backdrop-filter:blur(8px);border-top:1px solid rgba(100,150,220,.15)}
+
+/* ===== 组织关系图连接线 ===== */
+.org-map{background-image:radial-gradient(rgba(107,159,255,.15) 1px,transparent 1px);background-size:18px 18px}
+
+/* ===== 查看器操作栏增强 ===== */
+.view-actions{display:flex;align-items:center;gap:6px;padding:6px 8px}
+.view-presets{display:flex;gap:2px;padding:2px;background:rgba(6,16,34,.6);border:1px solid rgba(100,150,220,.2);border-radius:6px;margin-right:2px}
+.view-presets button{width:28px;height:26px;display:grid;place-items:center;border:0;background:transparent;color:var(--muted);font:700 11px "JetBrains Mono",monospace;cursor:pointer;border-radius:4px;transition:all .15s}
+.view-presets button:hover{background:rgba(107,159,255,.15);color:var(--accent)}
+.view-presets button:active{background:rgba(107,159,255,.25)}
+.view-actions>button{display:flex;gap:5px;align-items:center;background:rgba(18,57,78,.6);border:1px solid rgba(91,140,255,.35);color:#dbe8ff;padding:6px 10px;font:12px "Noto Sans SC";border-radius:6px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.view-actions>button:hover{background:rgba(30,84,110,.75);border-color:rgba(120,170,255,.55)}
+
+/* ===== 模型库空状态 ===== */
+.model-empty-hint{display:flex;align-items:center;gap:16px;padding:20px 24px;margin-bottom:16px;border:1px dashed rgba(107,159,255,.3);border-radius:8px;background:linear-gradient(135deg,rgba(107,159,255,.06),rgba(107,159,255,.02))}
+.model-empty-hint svg{color:var(--accent);opacity:.6;flex-shrink:0}
+.model-empty-hint b{display:block;font:600 14px "Noto Sans SC";color:var(--text);margin-bottom:4px}
+.model-empty-hint p{margin:0;font:12px "Noto Sans SC";color:var(--muted);line-height:1.5}
+
+/* ===== 系统设置面板 ===== */
+.system-panel{display:grid;gap:20px;max-width:640px}
+.config-actions{padding:16px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
+.config-actions h3,.storage-info h3{margin:0 0 12px;font:600 14px "Noto Sans SC";color:var(--text)}
+.config-buttons{display:flex;gap:10px;flex-wrap:wrap}
+.config-import{position:relative;cursor:pointer}
+.config-import input{position:absolute;opacity:0;width:100%;height:100%;cursor:pointer}
+.config-hint{margin:12px 0 0;font:11px "Noto Sans SC";color:var(--muted);line-height:1.6}
+.storage-info{padding:16px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}
+.storage-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.storage-grid>div{text-align:center;padding:12px 8px;background:rgba(6,16,34,.5);border-radius:6px;border:1px solid rgba(100,150,220,.1)}
+.storage-grid b{display:block;font:700 18px "JetBrains Mono",monospace;color:var(--accent)}
+.storage-grid small{display:block;margin-top:4px;font:10px "Noto Sans SC";color:var(--muted)}
+
+/* ===== 设备状态环形图 ===== */
+.device-status{display:flex;align-items:center;gap:24px;padding:8px 0}
+.donut-wrap{position:relative;flex-shrink:0}
+.donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+.donut-center b{font:700 22px "JetBrains Mono",monospace;color:var(--text);line-height:1}
+.donut-center small{font:10px "Noto Sans SC";color:var(--muted);margin-top:4px}
+.status-legend{display:flex;flex-direction:column;gap:10px;flex:1}
+.status-legend>div{display:flex;align-items:center;gap:10px;font:12px "Noto Sans SC"}
+.status-legend i{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+.status-legend span{color:var(--muted);flex:1}
+.status-legend b{color:var(--text);font:600 14px "JetBrains Mono",monospace}
+
+/* ===== WebGL 上下文丢失提示 ===== */
+.webgl-context-lost{position:absolute;inset:0;z-index:50;display:none;place-items:center;background:rgba(3,8,18,.9);backdrop-filter:blur(8px);text-align:center}
+.webgl-context-lost>div{max-width:320px;padding:32px}
+.webgl-context-lost b{display:block;font:600 18px "Noto Sans SC";color:#ff9b9b;margin-bottom:10px}
+.webgl-context-lost p{margin:0 0 20px;font:13px "Noto Sans SC";color:var(--muted);line-height:1.6}
+.webgl-context-lost button{padding:10px 24px;background:var(--accent);border:0;border-radius:6px;color:#04101f;font:600 13px "Noto Sans SC";cursor:pointer;transition:all .2s}
+.webgl-context-lost button:hover{box-shadow:0 0 20px rgba(107,159,255,.4)}
+
+/* ===== 模型层次结构面板 ===== */
+.outliner-toggle{display:flex;align-items:center;gap:4px;background:rgba(18,57,78,.6);border:1px solid rgba(91,140,255,.35);color:#dbe8ff;padding:6px 10px;font:12px "Noto Sans SC";border-radius:6px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.outliner-toggle:hover{background:rgba(30,84,110,.75);border-color:rgba(120,170,255,.55)}
+.outliner-toggle.active{background:rgba(107,159,255,.2);border-color:var(--accent);color:var(--accent)}
+.outliner-panel{position:absolute;top:82px;right:16px;z-index:7;width:280px;max-height:60vh;background:rgba(6,16,34,.92);backdrop-filter:blur(14px);border:1px solid rgba(100,150,220,.25);border-radius:10px;box-shadow:0 12px 36px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden;animation:slideIn .2s ease}
+@keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+.outliner-head{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid rgba(100,150,220,.15);background:rgba(107,159,255,.06)}
+.outliner-head b{font:600 13px "Noto Sans SC";color:var(--text)}
+.outliner-head button{background:transparent;border:0;color:var(--muted);cursor:pointer;padding:2px;display:flex;border-radius:4px}
+.outliner-head button:hover{color:var(--text);background:rgba(255,255,255,.06)}
+.outliner-body{flex:1;overflow-y:auto;padding:6px 0}
+.outliner-empty{padding:20px;text-align:center;color:var(--muted);font:12px "Noto Sans SC"}
+.outliner-node{font-family:"Noto Sans SC"}
+.outliner-row{display:flex;align-items:center;gap:6px;padding:5px 8px;cursor:pointer;border-radius:4px;margin:1px 4px;transition:background .12s}
+.outliner-row:hover{background:rgba(107,159,255,.12)}
+.outliner-expand{background:transparent;border:0;color:var(--muted);cursor:pointer;padding:0;width:14px;height:14px;display:grid;place-items:center;font-size:10px;flex-shrink:0}
+.outliner-expand:hover{color:var(--accent)}
+.outliner-expand-placeholder{width:14px;flex-shrink:0}
+.outliner-vis{cursor:pointer;font-size:12px;flex-shrink:0;user-select:none}
+.outliner-vis.hidden{opacity:.35}
+.outliner-name{flex:1;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.outliner-type{font-size:9px;color:var(--muted);font-family:"JetBrains Mono",monospace;flex-shrink:0}
+
+/* ===== 显示模式切换按钮 ===== */
+.display-mode-btn{display:flex;align-items:center;gap:5px;background:rgba(18,57,78,.6);border:1px solid rgba(91,140,255,.35);color:#dbe8ff;padding:6px 10px;font:12px "Noto Sans SC";border-radius:6px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.display-mode-btn:hover{background:rgba(30,84,110,.75);border-color:rgba(120,170,255,.55)}
+.display-mode-btn span{font-size:13px}
+
+/* ===== 性能监控面板 ===== */
+.perf-toggle{display:flex;align-items:center;gap:4px;background:rgba(18,57,78,.6);border:1px solid rgba(91,140,255,.35);color:#dbe8ff;padding:6px 10px;font:700 11px "JetBrains Mono",monospace;border-radius:6px;cursor:pointer;transition:all .15s;letter-spacing:.05em}
+.perf-toggle:hover{background:rgba(30,84,110,.75);border-color:rgba(120,170,255,.55)}
+.perf-toggle.active{background:rgba(107,159,255,.2);border-color:var(--accent);color:var(--accent)}
+.perf-overlay{position:absolute;top:82px;left:16px;z-index:6;padding:12px 16px;background:rgba(6,16,34,.85);backdrop-filter:blur(12px);border:1px solid rgba(100,150,220,.25);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.4);font-family:"JetBrains Mono",monospace;min-width:140px;animation:fadeIn .2s ease}
+.perf-row{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:4px 0;font-size:11px}
+.perf-row span{color:var(--muted)}
+.perf-row b{color:#eaf2ff;font-weight:600}
+.perf-row b.good{color:#34d399}
+.perf-row b.warn{color:#f6b957}
+.perf-row b.bad{color:#ff6b6b}
+
+/* ===== 全屏模式隐藏UI ===== */
+.viewer-page:fullscreen .importer,
+.viewer-page:fullscreen .view-actions,
+.viewer-page:fullscreen .model-switch-btn,
+.viewer-page:fullscreen .model-switch-hint,
+.viewer-page:fullscreen .model-info-badge,
+.viewer-page:fullscreen footer{display:none!important}
+.viewer-page:fullscreen .viewer-top{opacity:0;transition:opacity .3s}
+.viewer-page:fullscreen .viewer-top:hover{opacity:1}
+.viewer-page:-webkit-full-screen .importer,
+.viewer-page:-webkit-full-screen .view-actions,
+.viewer-page:-webkit-full-screen .model-switch-btn,
+.viewer-page:-webkit-full-screen .model-switch-hint,
+.viewer-page:-webkit-full-screen .model-info-badge,
+.viewer-page:-webkit-full-screen footer{display:none!important}
+.viewer-page:-webkit-full-screen .viewer-top{opacity:0;transition:opacity .3s}
+.viewer-page:-webkit-full-screen .viewer-top:hover{opacity:1}
+
+/* ===== 模型切换器（左右箭头 + 触摸滑动） ===== */
+.model-switch-btn{position:absolute;top:50%;z-index:7;width:48px;height:72px;display:grid;place-items:center;border:1px solid rgba(120,170,255,.2);border-radius:12px;background:rgba(8,18,36,.6);backdrop-filter:blur(12px);color:rgba(200,220,255,.85);cursor:pointer;opacity:0;pointer-events:none;transform:translateY(-50%) scale(.7);transition:opacity .35s cubic-bezier(.34,1.56,.64,1),transform .35s cubic-bezier(.34,1.56,.64,1),background .2s,box-shadow .2s}
+.model-switch-btn.show{opacity:1;pointer-events:auto;transform:translateY(-50%) scale(1);animation:switch-jelly .6s cubic-bezier(.28,.84,.42,1)}
+@keyframes switch-jelly{0%{transform:translateY(-50%) scale(.4);opacity:0}25%{transform:translateY(-50%) scale(1.18);opacity:1}45%{transform:translateY(-50%) scale(.92)}65%{transform:translateY(-50%) scale(1.06)}82%{transform:translateY(-50%) scale(.98)}100%{transform:translateY(-50%) scale(1);opacity:1}}
+.model-switch-btn:hover{border-color:rgba(120,170,255,.5);background:rgba(14,30,56,.8);color:#fff;box-shadow:0 0 24px rgba(91,140,255,.3)}
+.model-switch-btn:active{transform:translateY(-50%) scale(.92)}
+.model-switch-prev{left:16px}
+.model-switch-next{right:16px}
+.model-switch-hint{position:absolute;top:20px;left:50%;transform:translateX(-50%);z-index:8;padding:10px 20px;border:1px solid rgba(120,170,255,.4);border-radius:10px;background:rgba(14,30,56,.92);backdrop-filter:blur(14px);color:#eaf2ff;font:600 12px "Noto Sans SC";letter-spacing:.04em;box-shadow:0 0 28px rgba(91,140,255,.3);animation:hint-fade .3s ease-out;display:flex;align-items:center;gap:12px}
+.model-switch-confirm{padding:5px 14px;border:1px solid rgba(120,170,255,.5);border-radius:6px;background:rgba(91,140,255,.2);color:#eaf2ff;font:600 11px "Noto Sans SC";cursor:pointer;transition:all .15s}
+.model-switch-confirm:hover{background:rgba(91,140,255,.35);border-color:rgba(150,200,255,.7)}
+@keyframes hint-fade{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.model-press-ring{position:absolute;top:50%;left:50%;z-index:8;width:80px;height:80px;margin:-40px 0 0 -40px;border-radius:50%;border:2px solid rgba(120,170,255,.6);pointer-events:none;animation:press-ring .5s ease-out forwards}
+@keyframes press-ring{0%{width:40px;height:40px;margin:-20px 0 0 -20px;opacity:.8;border-width:3px}100%{width:120px;height:120px;margin:-60px 0 0 -60px;opacity:0;border-width:1px}}
+
+/* ===== 太阳环绕调节盘 ===== */
+.sun-control{grid-column:1/-1;display:grid;gap:12px;padding:14px;border:1px solid rgba(120,170,255,.15);border-radius:10px;background:linear-gradient(160deg,rgba(10,24,44,.6),rgba(6,14,28,.7))}
+.sun-control-head{display:flex;align-items:center;justify-content:space-between}
+.sun-control-head b{color:#eaf2ff;font-size:12px;font-weight:600;letter-spacing:.03em}
+.toggle.sm{display:flex;align-items:center;gap:6px;font-size:11px;color:#93b3d8;cursor:pointer}
+.toggle.sm input{position:absolute;opacity:0}
+.toggle.sm i{width:22px;height:12px;background:#29486e;border-radius:6px;position:relative;transition:.15s}
+.toggle.sm i:after{content:"";position:absolute;width:8px;height:8px;left:2px;top:2px;border-radius:50%;background:#8aa8c8;transition:.15s}
+.toggle.sm input:checked+i{background:var(--accent)}
+.toggle.sm input:checked+i:after{left:12px;background:#eaf2ff}
+.sun-disk-wrap{display:grid;gap:8px}
+.sun-disk{width:100%;max-width:180px;aspect-ratio:1;margin:0 auto;border-radius:50%;background:radial-gradient(circle at 50% 40%,rgba(30,50,80,.5),rgba(8,16,32,.7));border:1px solid rgba(120,170,255,.2);touch-action:none;user-select:none}
+.sun-info{display:flex;justify-content:center;gap:16px;font:600 11px "JetBrains Mono",monospace;color:rgba(180,210,255,.7);letter-spacing:.05em}
+.sun-elev{display:grid;gap:4px;color:#93b3d8;font-size:11px}
+.sun-elev input[type=range]{width:100%;accent-color:var(--accent)}
+.sun-elev input:disabled{opacity:.4}
+.sun-elev output{color:#eaf2ff;font:600 11px "JetBrains Mono",monospace}
+.sun-hint{margin:0;color:#6a86a8;font-size:10.5px;line-height:1.5;text-align:center}
+
+/* ===== 3D 指南针 ===== */
+.compass-3d{position:absolute;right:16px;top:82px;z-index:5;pointer-events:auto;cursor:pointer;filter:drop-shadow(0 4px 12px rgba(0,0,0,.4));transition:transform .2s ease,filter .2s ease}
+.compass-3d:hover{transform:scale(1.08);filter:drop-shadow(0 6px 20px rgba(107,159,255,.3))}
+.compass-3d:active{transform:scale(.96)}
+.compass-3d svg{display:block}
+.compass-3d text{user-select:none;pointer-events:none}
+.compass-3d g[style*="cursor"]{cursor:pointer}
+
+/* ===== 头部实时时钟 ===== */
+.viewer-clock{display:flex;align-items:center;padding:6px 14px;border:1px solid rgba(100,150,220,.2);border-radius:6px;background:rgba(10,22,44,.6);font:700 13px "JetBrains Mono",monospace;color:var(--accent);letter-spacing:.08em;box-shadow:0 0 10px rgba(107,159,255,.1);margin-right:8px}
+
+/* ===== 模型信息徽章 ===== */
+.model-info-badge{position:absolute;bottom:38px;right:16px;display:flex;align-items:center;gap:8px;padding:6px 12px;background:rgba(6,16,34,.72);backdrop-filter:blur(10px);border:1px solid rgba(100,150,220,.2);border-radius:6px;font:11px "JetBrains Mono",monospace;color:var(--muted);z-index:5;pointer-events:none;letter-spacing:.03em}
+.model-info-badge span{color:#cfe0ff}
+.model-info-badge i{width:1px;height:12px;background:rgba(100,150,220,.3)}
+
+/* ===== 滚动条美化 ===== */
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(100,150,220,.3);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:rgba(100,150,220,.5)}
