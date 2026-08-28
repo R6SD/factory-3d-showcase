@@ -14,6 +14,155 @@ import { loadModelFile } from './ModelLoader.js';
  *   setDisplayMode(), getFps(), getModelTree(), focusNode(), toggleNodeVisible()
  *   updateConfig(sceneConfig), dispose()
  */
+
+/**
+ * 创建默认工厂模型（建筑、储罐、管道、传送带、树木、围栏等）。
+ * 供 SceneRuntime 和设置页实时预览共用。
+ */
+export function createFactoryModel() {
+  const g = new THREE.Group();
+  const mat = (c, opts = {}) => new THREE.MeshStandardMaterial({ color: c, metalness: opts.metalness ?? 0.3, roughness: opts.roughness ?? 0.55, ...opts });
+  const box = (w, h, d, x, y, z, c, opts) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c, opts));
+    m.position.set(x, y + h / 2, z);
+    m.castShadow = m.receiveShadow = true;
+    g.add(m);
+    return m;
+  };
+  const cyl = (r1, r2, h, x, y, z, c, seg = 16, opts) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, h, seg), mat(c, opts));
+    m.position.set(x, y + h / 2, z);
+    m.castShadow = m.receiveShadow = true;
+    g.add(m);
+    return m;
+  };
+  const pipe = (x1, y1, z1, x2, y2, z2, r, c) => {
+    const dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
+    const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 10), mat(c, { metalness: 0.6, roughness: 0.35 }));
+    m.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, dy, dz).normalize());
+    m.castShadow = m.receiveShadow = true;
+    g.add(m);
+  };
+
+  // Floor platform (纯黑，与背景融合，只保留网格线)
+  box(18, 0.4, 14, 0, -0.4, 0, 0x000000, { roughness: 1 });
+  box(18, 0.06, 14, 0, 0, 0, 0x000000, { roughness: 1 });
+  for (let x = -8; x <= 8; x += 2) box(0.06, 0.02, 14, x, 0.03, 0, 0x2a4a70);
+  for (let z = -6; z <= 6; z += 2) box(18, 0.02, 0.06, 0, 0.03, z, 0x1a3a5c);
+
+  // Main buildings
+  box(4.5, 2.8, 3.2, -4.2, 0, -2.8, 0x6a7a96, { metalness: 0.4 });
+  box(4.6, 0.15, 3.3, -4.2, 2.8, -2.8, 0x3a7ad8, { metalness: 0.6, roughness: 0.3 });
+  for (let i = 0; i < 3; i++) box(0.6, 0.5, 0.05, -5.5 + i * 1.3, 1.2, -4.42, 0x88c8ff, { emissive: 0x4488cc, emissiveIntensity: 0.2, roughness: 0.2 });
+  box(3.8, 2.4, 2.8, -4.2, 0, 3.2, 0x5e6e8a, { metalness: 0.4 });
+  box(3.9, 0.12, 2.9, -4.2, 2.4, 3.2, 0x3a7ad8, { metalness: 0.6, roughness: 0.3 });
+  box(3.4, 3.4, 3.6, 3.6, 0, -2.4, 0x72829e, { metalness: 0.4 });
+  box(3.5, 0.15, 3.7, 3.6, 3.4, -2.4, 0x3a7ad8, { metalness: 0.6, roughness: 0.3 });
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) box(0.5, 0.45, 0.05, 2.6 + i * 1.0, 1.0 + j * 1.2, -4.22, 0x88c8ff, { emissive: 0x4488cc, emissiveIntensity: 0.2, roughness: 0.2 });
+  box(2.8, 2.0, 3, 3.8, 0, 3.2, 0x7a8aa6, { metalness: 0.4 });
+  box(2.9, 0.12, 3.1, 3.8, 2.0, 3.2, 0x3a7ad8, { metalness: 0.6, roughness: 0.3 });
+
+  // Silos
+  cyl(0.95, 0.95, 3.4, -7.2, 0, 1.5, 0x5a7a9a, 24, { metalness: 0.5, roughness: 0.4 });
+  cyl(1.0, 1.0, 0.18, -7.2, 3.4, 1.5, 0x8aaacc, 24, { metalness: 0.6, roughness: 0.3 });
+  cyl(0.7, 0.7, 2.8, -7.2, 0, -1.5, 0x5a7a9a, 24, { metalness: 0.5, roughness: 0.4 });
+  cyl(0.75, 0.75, 0.14, -7.2, 2.8, -1.5, 0x8aaacc, 24, { metalness: 0.6, roughness: 0.3 });
+  box(0.04, 2.5, 0.04, -6.2, 0.3, 1.5, 0x8a9ab0, { metalness: 0.7 });
+  for (let i = 0; i < 6; i++) box(0.15, 0.03, 0.04, -6.2, 0.5 + i * 0.4, 1.5, 0x8a9ab0, { metalness: 0.7 });
+
+  // Pipes
+  pipe(-7.2, 3.5, 1.5, -7.2, 4.4, 1.5, 0.12, 0x8aaacc);
+  pipe(-7.2, 4.4, 1.5, -4.2, 4.4, 1.5, 0.12, 0x8aaacc);
+  pipe(-4.2, 4.4, 1.5, -4.2, 3.0, 1.5, 0.1, 0x8aaacc);
+  pipe(-7.2, 2.9, -1.5, -7.2, 4.0, -1.5, 0.1, 0x8aaacc);
+  pipe(-7.2, 4.0, -1.5, 3.6, 4.0, -1.5, 0.1, 0x8aaacc);
+  pipe(3.6, 4.0, -1.5, 3.6, 3.6, -1.5, 0.08, 0x8aaacc);
+  cyl(0.15, 0.15, 0.1, -5.5, 4.35, 1.5, 0xc04040, 8, { metalness: 0.6 });
+  cyl(0.12, 0.12, 0.08, 0, 3.95, -1.5, 0xc04040, 8, { metalness: 0.6 });
+
+  // Conveyor
+  const conv = new THREE.Group();
+  conv.position.set(0, 0, 0);
+  box(12.5, 0.15, 0.25, 0, 0.15, -0.95, 0x3a4a66, { metalness: 0.7 });
+  box(12.5, 0.15, 0.25, 0, 0.15, 0.95, 0x3a4a66, { metalness: 0.7 });
+  for (let i = 0; i < 5; i++) {
+    const lx = -5 + i * 2.5;
+    box(0.1, 0.35, 0.1, lx, 0, -0.95, 0x4a5a76, { metalness: 0.6 });
+    box(0.1, 0.35, 0.1, lx, 0, 0.95, 0x4a5a76, { metalness: 0.6 });
+  }
+  for (let i = 0; i < 14; i++) {
+    const slat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 1.6), mat(0x4a5a78, { metalness: 0.5, roughness: 0.6 }));
+    slat.position.set(-5.5 + i * 0.85, 0.32, 0);
+    slat.castShadow = slat.receiveShadow = true;
+    conv.add(slat);
+  }
+  for (let i = 0; i < 7; i++) {
+    const roller = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.8, 12), mat(0x5a6a88, { metalness: 0.7, roughness: 0.3 }));
+    roller.position.set(-5 + i * 1.65, 0.22, 0);
+    roller.rotation.z = Math.PI / 2;
+    roller.castShadow = roller.receiveShadow = true;
+    roller.userData.roller = true;
+    conv.add(roller);
+  }
+  conv.userData.rollers = conv.children.filter((c) => c.userData.roller);
+  g.add(conv);
+  g.userData.conveyor = conv;
+
+  // Crates on conveyor
+  for (let i = 0; i < 5; i++) {
+    const crate = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.55, 0.65), mat(i % 2 ? 0xc4956a : 0xb8865a, { roughness: 0.8 }));
+    crate.position.set(-4.5 + i * 2, 0.63, 0);
+    crate.castShadow = crate.receiveShadow = true;
+    crate.userData.crate = true;
+    crate.userData.crateOffset = i * 2;
+    g.add(crate);
+  }
+
+  // Warning lights
+  for (let i = 0; i < 6; i++) {
+    const x = -6 + i * 2.4;
+    cyl(0.05, 0.07, 1.0, x, 0.05, -5.5, 0x4a4a4a, 8, { metalness: 0.6 });
+    cyl(0.08, 0.08, 0.18, x, 1.05, -5.5, i % 2 ? 0xff6b35 : 0xe8c84a, 8, { emissive: i % 2 ? 0xff4400 : 0xccaa00, emissiveIntensity: 0.5 });
+    cyl(0.05, 0.07, 1.0, x, 0.05, 5.5, 0x4a4a4a, 8, { metalness: 0.6 });
+    cyl(0.08, 0.08, 0.18, x, 1.05, 5.5, i % 2 ? 0xe8c84a : 0xff6b35, 8, { emissive: i % 2 ? 0xccaa00 : 0xff4400, emissiveIntensity: 0.5 });
+  }
+
+  // Trees
+  for (let x = -7; x <= 7; x += 2.8) {
+    for (const z of [-4.8, 4.8]) {
+      const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.5, 6), mat(0x5a4028, { roughness: 0.9 }));
+      tr.position.set(x, 0.05, z); tr.castShadow = true;
+      const l = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), mat(0x2b8060, { roughness: 0.8 }));
+      l.position.set(x, 0.6, z); l.castShadow = true;
+      g.add(tr, l);
+    }
+  }
+
+  // Ceiling lamps
+  for (let i = 0; i < 4; i++) {
+    const lx = -5 + i * 3.3;
+    box(1.4, 0.08, 0.4, lx, 5.0, 0, 0x3a4a66, { metalness: 0.5 });
+    box(1.2, 0.03, 0.3, lx, 4.96, 0, 0xfff4e0, { emissive: 0xfff0d0, emissiveIntensity: 0.8 });
+    const glow = new THREE.PointLight(0xfff0d8, 0.35, 10);
+    glow.position.set(lx, 4.7, 0);
+    g.add(glow);
+  }
+
+  // Fence
+  for (let x = -9; x <= 9; x += 1.5) {
+    cyl(0.04, 0.04, 0.8, x, 0, -6.8, 0x6a7a8a, 6, { metalness: 0.6 });
+    cyl(0.04, 0.04, 0.8, x, 0, 6.8, 0x6a7a8a, 6, { metalness: 0.6 });
+  }
+  box(18.5, 0.04, 0.04, 0, 0.5, -6.8, 0x7a8a9a, { metalness: 0.6 });
+  box(18.5, 0.04, 0.04, 0, 0.7, -6.8, 0x7a8a9a, { metalness: 0.6 });
+  box(18.5, 0.04, 0.04, 0, 0.5, 6.8, 0x7a8a9a, { metalness: 0.6 });
+  box(18.5, 0.04, 0.04, 0, 0.7, 6.8, 0x7a8a9a, { metalness: 0.6 });
+
+  return g;
+}
+
 export class SceneRuntime {
   constructor(container, callbacks = {}) {
     this._root = container;
@@ -210,161 +359,7 @@ export class SceneRuntime {
   // ── Default factory model ───────────────────────────────────────
 
   _factory() {
-    const g = new THREE.Group();
-    const mat = (c, opts = {}) => new THREE.MeshStandardMaterial({ color: c, metalness: opts.metalness ?? 0.3, roughness: opts.roughness ?? 0.55, ...opts });
-    const box = (w, h, d, x, y, z, c, opts) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c, opts));
-      m.position.set(x, y + h / 2, z);
-      m.castShadow = m.receiveShadow = true;
-      g.add(m);
-      return m;
-    };
-    const cyl = (r1, r2, h, x, y, z, c, seg = 16, opts) => {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r2, h, seg), mat(c, opts));
-      m.position.set(x, y + h / 2, z);
-      m.castShadow = m.receiveShadow = true;
-      g.add(m);
-      return m;
-    };
-    const pipe = (x1, y1, z1, x2, y2, z2, r, c) => {
-      const dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
-      const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 10), mat(c, { metalness: 0.6, roughness: 0.35 }));
-      m.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2);
-      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, dy, dz).normalize());
-      m.castShadow = m.receiveShadow = true;
-      g.add(m);
-    };
-
-    // Floor platform (纯黑，与背景融合，只保留网格线)
-    box(18, 0.4, 14, 0, -0.4, 0, 0x000000, { roughness: 1 });
-    box(18, 0.06, 14, 0, 0, 0, 0x000000, { roughness: 1 });
-    // Floor grid lines
-    for (let x = -8; x <= 8; x += 2) box(0.06, 0.02, 14, x, 0.03, 0, 0x2a4a70);
-    for (let z = -6; z <= 6; z += 2) box(18, 0.02, 0.06, 0, 0.03, z, 0x1a3a5c);
-
-    // Main buildings
-    box(4.5, 2.8, 3.2, -4.2, 0, -2.8, 0x6a7a96, { metalness: 0.4 });
-    box(4.6, 0.15, 3.3, -4.2, 2.8, -2.8, 0x3a7ad8, { metalness: 0.6, roughness: 0.3 });
-    // Building windows
-    for (let i = 0; i < 3; i++) box(0.6, 0.5, 0.05, -5.5 + i * 1.3, 1.2, -4.42, 0x88c8ff, { emissive: 0x4488cc, emissiveIntensity: 0.2, roughness: 0.2 });
-
-    box(3.8, 2.4, 2.8, -4.2, 0, 3.2, 0x5e6e8a, { metalness: 0.4 });
-    box(3.9, 0.12, 2.9, -4.2, 2.4, 3.2, 0x3a7ad8, { metalness: 0.6, roughness: 0.3 });
-
-    box(3.4, 3.4, 3.6, 3.6, 0, -2.4, 0x72829e, { metalness: 0.4 });
-    box(3.5, 0.15, 3.7, 3.6, 3.4, -2.4, 0x3a7ad8, { metalness: 0.6, roughness: 0.3 });
-    // Tall building windows
-    for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) box(0.5, 0.45, 0.05, 2.6 + i * 1.0, 1.0 + j * 1.2, -4.22, 0x88c8ff, { emissive: 0x4488cc, emissiveIntensity: 0.2, roughness: 0.2 });
-
-    box(2.8, 2.0, 3, 3.8, 0, 3.2, 0x7a8aa6, { metalness: 0.4 });
-    box(2.9, 0.12, 3.1, 3.8, 2.0, 3.2, 0x3a7ad8, { metalness: 0.6, roughness: 0.3 });
-
-    // Silos
-    cyl(0.95, 0.95, 3.4, -7.2, 0, 1.5, 0x5a7a9a, 24, { metalness: 0.5, roughness: 0.4 });
-    cyl(1.0, 1.0, 0.18, -7.2, 3.4, 1.5, 0x8aaacc, 24, { metalness: 0.6, roughness: 0.3 });
-    cyl(0.7, 0.7, 2.8, -7.2, 0, -1.5, 0x5a7a9a, 24, { metalness: 0.5, roughness: 0.4 });
-    cyl(0.75, 0.75, 0.14, -7.2, 2.8, -1.5, 0x8aaacc, 24, { metalness: 0.6, roughness: 0.3 });
-    // Silo ladders
-    box(0.04, 2.5, 0.04, -6.2, 0.3, 1.5, 0x8a9ab0, { metalness: 0.7 });
-    for (let i = 0; i < 6; i++) box(0.15, 0.03, 0.04, -6.2, 0.5 + i * 0.4, 1.5, 0x8a9ab0, { metalness: 0.7 });
-
-    // Pipes
-    pipe(-7.2, 3.5, 1.5, -7.2, 4.4, 1.5, 0.12, 0x8aaacc);
-    pipe(-7.2, 4.4, 1.5, -4.2, 4.4, 1.5, 0.12, 0x8aaacc);
-    pipe(-4.2, 4.4, 1.5, -4.2, 3.0, 1.5, 0.1, 0x8aaacc);
-    pipe(-7.2, 2.9, -1.5, -7.2, 4.0, -1.5, 0.1, 0x8aaacc);
-    pipe(-7.2, 4.0, -1.5, 3.6, 4.0, -1.5, 0.1, 0x8aaacc);
-    pipe(3.6, 4.0, -1.5, 3.6, 3.6, -1.5, 0.08, 0x8aaacc);
-    // Pipe valves
-    cyl(0.15, 0.15, 0.1, -5.5, 4.35, 1.5, 0xc04040, 8, { metalness: 0.6 });
-    cyl(0.12, 0.12, 0.08, 0, 3.95, -1.5, 0xc04040, 8, { metalness: 0.6 });
-
-    // Conveyor
-    const conv = new THREE.Group();
-    conv.position.set(0, 0, 0);
-    // Conveyor frame
-    box(12.5, 0.15, 0.25, 0, 0.15, -0.95, 0x3a4a66, { metalness: 0.7 });
-    box(12.5, 0.15, 0.25, 0, 0.15, 0.95, 0x3a4a66, { metalness: 0.7 });
-    // Conveyor legs
-    for (let i = 0; i < 5; i++) {
-      const lx = -5 + i * 2.5;
-      box(0.1, 0.35, 0.1, lx, 0, -0.95, 0x4a5a76, { metalness: 0.6 });
-      box(0.1, 0.35, 0.1, lx, 0, 0.95, 0x4a5a76, { metalness: 0.6 });
-    }
-    // Slats
-    for (let i = 0; i < 14; i++) {
-      const slat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 1.6), mat(0x4a5a78, { metalness: 0.5, roughness: 0.6 }));
-      slat.position.set(-5.5 + i * 0.85, 0.32, 0);
-      slat.castShadow = slat.receiveShadow = true;
-      conv.add(slat);
-    }
-    // Rollers
-    for (let i = 0; i < 7; i++) {
-      const roller = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.8, 12), mat(0x5a6a88, { metalness: 0.7, roughness: 0.3 }));
-      roller.position.set(-5 + i * 1.65, 0.22, 0);
-      roller.rotation.z = Math.PI / 2;
-      roller.castShadow = roller.receiveShadow = true;
-      roller.userData.roller = true;
-      conv.add(roller);
-    }
-    conv.userData.rollers = conv.children.filter((c) => c.userData.roller);
-    g.add(conv);
-    g.userData.conveyor = conv;
-
-    // Crates on conveyor
-    for (let i = 0; i < 5; i++) {
-      const crate = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.55, 0.65), mat(i % 2 ? 0xc4956a : 0xb8865a, { roughness: 0.8 }));
-      crate.position.set(-4.5 + i * 2, 0.63, 0);
-      crate.castShadow = crate.receiveShadow = true;
-      crate.userData.crate = true;
-      crate.userData.crateOffset = i * 2;
-      g.add(crate);
-    }
-
-    // Warning lights
-    for (let i = 0; i < 6; i++) {
-      const x = -6 + i * 2.4;
-      cyl(0.05, 0.07, 1.0, x, 0.05, -5.5, 0x4a4a4a, 8, { metalness: 0.6 });
-      cyl(0.08, 0.08, 0.18, x, 1.05, -5.5, i % 2 ? 0xff6b35 : 0xe8c84a, 8, { emissive: i % 2 ? 0xff4400 : 0xccaa00, emissiveIntensity: 0.5 });
-      cyl(0.05, 0.07, 1.0, x, 0.05, 5.5, 0x4a4a4a, 8, { metalness: 0.6 });
-      cyl(0.08, 0.08, 0.18, x, 1.05, 5.5, i % 2 ? 0xe8c84a : 0xff6b35, 8, { emissive: i % 2 ? 0xccaa00 : 0xff4400, emissiveIntensity: 0.5 });
-    }
-
-    // Trees (landscaping)
-    for (let x = -7; x <= 7; x += 2.8) {
-      for (const z of [-4.8, 4.8]) {
-        const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.5, 6), mat(0x5a4028, { roughness: 0.9 }));
-        tr.position.set(x, 0.05, z);
-        tr.castShadow = true;
-        const l = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), mat(0x2b8060, { roughness: 0.8 }));
-        l.position.set(x, 0.6, z);
-        l.castShadow = true;
-        g.add(tr, l);
-      }
-    }
-
-    // Ceiling lamps (industrial)
-    for (let i = 0; i < 4; i++) {
-      const lx = -5 + i * 3.3;
-      box(1.4, 0.08, 0.4, lx, 5.0, 0, 0x3a4a66, { metalness: 0.5 });
-      box(1.2, 0.03, 0.3, lx, 4.96, 0, 0xfff4e0, { emissive: 0xfff0d0, emissiveIntensity: 0.8 });
-      const glow = new THREE.PointLight(0xfff0d8, 0.35, 10);
-      glow.position.set(lx, 4.7, 0);
-      g.add(glow);
-    }
-
-    // Fence around perimeter
-    for (let x = -9; x <= 9; x += 1.5) {
-      cyl(0.04, 0.04, 0.8, x, 0, -6.8, 0x6a7a8a, 6, { metalness: 0.6 });
-      cyl(0.04, 0.04, 0.8, x, 0, 6.8, 0x6a7a8a, 6, { metalness: 0.6 });
-    }
-    box(18.5, 0.04, 0.04, 0, 0.5, -6.8, 0x7a8a9a, { metalness: 0.6 });
-    box(18.5, 0.04, 0.04, 0, 0.7, -6.8, 0x7a8a9a, { metalness: 0.6 });
-    box(18.5, 0.04, 0.04, 0, 0.5, 6.8, 0x7a8a9a, { metalness: 0.6 });
-    box(18.5, 0.04, 0.04, 0, 0.7, 6.8, 0x7a8a9a, { metalness: 0.6 });
-
-    return g;
+    return createFactoryModel();
   }
 
   // ── Helpers ─────────────────────────────────────────────────────
