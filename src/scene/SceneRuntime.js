@@ -639,6 +639,10 @@ export class SceneRuntime {
       const loaded = await loadModelFile(file);
       next = loaded.object;
       this.mixer = loaded.mixer;
+      // 导入模型统一启用阴影投射与接收
+      next.traverse((o) => {
+        if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }
+      });
       if (this.model) {
         this.exitingModel = this.model;
         this.exitingModel.userData.exitStart = performance.now();
