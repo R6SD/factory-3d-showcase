@@ -136,7 +136,7 @@ export class SceneRuntime {
     this.scene.add(this.grid);
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(60, 60),
-      new THREE.MeshStandardMaterial({ color: 0x1a2535, roughness: 0.9, metalness: 0.1 })
+      new THREE.MeshStandardMaterial({ color: 0x080c14, roughness: 0.95, metalness: 0.05 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.01;
@@ -236,12 +236,12 @@ export class SceneRuntime {
       g.add(m);
     };
 
-    // Floor platform
-    box(18, 0.4, 14, 0, -0.4, 0, 0x2a3a52, { roughness: 0.8 });
-    box(18, 0.06, 14, 0, 0, 0, 0x3a4e6e, { roughness: 0.7 });
+    // Floor platform (深色，与黑背景融合)
+    box(18, 0.4, 14, 0, -0.4, 0, 0x0a0f18, { roughness: 0.9 });
+    box(18, 0.06, 14, 0, 0, 0, 0x0d1520, { roughness: 0.85 });
     // Floor grid lines
-    for (let x = -8; x <= 8; x += 2) box(0.06, 0.02, 14, x, 0.03, 0, 0x4a6a9a);
-    for (let z = -6; z <= 6; z += 2) box(18, 0.02, 0.06, 0, 0.03, z, 0x3a5a80);
+    for (let x = -8; x <= 8; x += 2) box(0.06, 0.02, 14, x, 0.03, 0, 0x2a4a70);
+    for (let z = -6; z <= 6; z += 2) box(18, 0.02, 0.06, 0, 0.03, z, 0x1a3a5c);
 
     // Main buildings
     box(4.5, 2.8, 3.2, -4.2, 0, -2.8, 0x6a7a96, { metalness: 0.4 });
