@@ -80,60 +80,9 @@ function ModelSwitcher() {
       return !!raycaster.intersectObject(rt.getModel(), true)[0];
     };
 
-    const setModelPress = (pressed) => {
-      const rt = window.__factorySceneRuntime;
-      const m = rt?.getModel();
-      if (!m) return;
-      // 使用入场动画目标缩放作为基准，避免在入场动画期间捕获错误值
-      const orig = m.userData.tScale ? m.userData.tScale.clone() : m.scale.clone();
-      m.userData.origScale = orig;
-
-      if (m.userData._springRAF) {
-        cancelAnimationFrame(m.userData._springRAF);
-        m.userData._springRAF = null;
-      }
-
-      if (pressed) {
-        // 按压：快速 squish —— Y轴压缩，X/Z轴膨胀（体积近似守恒）
-        const target = 0.90;
-        const start = performance.now();
-        const dur = 120;
-        const from = m.scale.y / orig.y;
-        const step = () => {
-          const t = Math.min((performance.now() - start) / dur, 1);
-          const e = 1 - Math.pow(1 - t, 3); // ease-out cubic
-          const s = from + (target - from) * e;
-          const stretch = 1 + (1 - s) * 0.45; // 横向膨胀补偿
-          m.scale.set(orig.x * stretch, orig.y * s, orig.z * stretch);
-          if (t < 1) m.userData._springRAF = requestAnimationFrame(step);
-        };
-        step();
-      } else {
-        // 松开：阻尼谐振子振荡 —— 过冲+衰减，果冻回弹
-        const start = performance.now();
-        const from = m.scale.y / orig.y;
-        const omega = 14;   // 自然频率（振荡速度）
-        const zeta = 0.55;  // 阻尼比（0.55 = 欠阻尼，2-3次振荡）
-        const omegaD = omega * Math.sqrt(1 - zeta * zeta);
-        const A = from - 1; // 初始偏移
-        const phi = Math.atan2(-zeta * omega * A, omegaD * A) || 0;
-        const amp = A / Math.cos(phi);
-
-        const step = () => {
-          const t = (performance.now() - start) / 1000;
-          const env = Math.exp(-zeta * omega * t);
-          const s = 1 + amp * env * Math.cos(omegaD * t + phi);
-          const stretch = 1 + (1 - s) * 0.45;
-          m.scale.set(orig.x * stretch, orig.y * s, orig.z * stretch);
-          if (env > 0.008 && t < 1.5) {
-            m.userData._springRAF = requestAnimationFrame(step);
-          } else {
-            m.scale.copy(orig);
-            m.userData._springRAF = null;
-          }
-        };
-        step();
-      }
+    const setViewerPress = (pressed) => {
+      // 调用 SceneRuntime 的 3D 空间按压回弹（相机 zoom + 模型 scale 联动）
+      rt.current?.pressBounce(pressed);
     };
 
     const onTouchStart = e => {
@@ -154,10 +103,11 @@ function ModelSwitcher() {
       if (!raycastModel(e.clientX, e.clientY)) return;
       pressStartPos = { x: e.clientX, y: e.clientY };
       setPressing(true);
-      setModelPress(true);
       longPressTimer = setTimeout(() => {
-        setModelPress(false);
         setPressing(false);
+        // 长按激活：果冻按压回弹后进入切换模式
+        setViewerPress(true);
+        setTimeout(() => setViewerPress(false), 140);
         setSwitchMode(true);
       }, 500);
     };
@@ -169,13 +119,11 @@ function ModelSwitcher() {
         clearTimeout(longPressTimer);
         longPressTimer = null;
         setPressing(false);
-        setModelPress(false);
       }
     };
     const onPointerUp = () => {
       if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
       setPressing(false);
-      setModelPress(false);
     };
     const onContextMenu = e => e.preventDefault();
 
