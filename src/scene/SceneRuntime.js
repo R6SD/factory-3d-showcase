@@ -600,7 +600,7 @@ export class SceneRuntime {
       studio: [0x172440, 0xffffff, 0x4b5561, 3.1, 0xffffff, 3.8, 0x9fc0ff, 13],
       dusk: [0x251625, 0x8b87c9, 0x241625, 1.9, 0xffa96d, 3.3, 0xe266b8, 18],
     }[sceneConfig.environment];
-    r.scene.background = new THREE.Color(env[0]);
+    r.scene.background = new THREE.Color(0x000000); // 强制纯黑背景
     r.scene.fog = null;
     r.hemi.color.setHex(env[1]);
     r.hemi.groundColor.setHex(env[2]);
