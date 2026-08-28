@@ -829,8 +829,8 @@ export class SceneRuntime {
     // 只在入场动画结束后应用，避免冲突
     if (this.entranceStart <= 0 && this.model) {
       const p = this._press;
-      // Spring physics: stiffness 200, damping 18 → 阻尼比 0.64，一次过冲后快速衰减
-      const stiffness = 200, damping = 18, mass = 1;
+      // Spring physics: stiffness 280, damping 20 → 阻尼比 0.60，快速回弹+一次过冲
+      const stiffness = 280, damping = 20, mass = 1;
       const force = -stiffness * (p.current - p.target) - damping * p.velocity;
       p.velocity += (force / mass) * dt;
       p.current += p.velocity * dt;
@@ -841,10 +841,10 @@ export class SceneRuntime {
       const pressVal = p.current;
       if (Math.abs(pressVal) > 0.001) {
         // 基于按压开始时的基础 zoom，避免覆盖用户手动缩放
-        this.camera.zoom = this._baseCameraZoom * (1 + pressVal * 0.18);
+        this.camera.zoom = this._baseCameraZoom * (1 + pressVal * 0.4);
         this.camera.updateProjectionMatrix();
       }
-      const scaleFactor = 1 - pressVal * 0.07;
+      const scaleFactor = 1 - pressVal * 0.18;
       const ts = this.model.userData.tScale || this._baseModelScale;
       this.model.scale.set(ts.x * scaleFactor, ts.y * scaleFactor, ts.z * scaleFactor);
     }
