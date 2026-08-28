@@ -131,12 +131,12 @@ export class SceneRuntime {
     this.rim.position.set(7, 4, -3);
     this.scene.add(this.hemi, this.sun, this.rim, this.sun.target);
 
-    // Grid & ground
+    // Grid & ground (纯黑小地面，与背景融合，只保留网格线)
     this.grid = new THREE.GridHelper(26, 26, 0x3a6ea5, 0x1a3a5c);
     this.scene.add(this.grid);
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(60, 60),
-      new THREE.MeshStandardMaterial({ color: 0x080c14, roughness: 0.95, metalness: 0.05 })
+      new THREE.PlaneGeometry(24, 18),
+      new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 1, metalness: 0 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.01;
@@ -236,9 +236,9 @@ export class SceneRuntime {
       g.add(m);
     };
 
-    // Floor platform (深色，与黑背景融合)
-    box(18, 0.4, 14, 0, -0.4, 0, 0x0a0f18, { roughness: 0.9 });
-    box(18, 0.06, 14, 0, 0, 0, 0x0d1520, { roughness: 0.85 });
+    // Floor platform (纯黑，与背景融合，只保留网格线)
+    box(18, 0.4, 14, 0, -0.4, 0, 0x000000, { roughness: 1 });
+    box(18, 0.06, 14, 0, 0, 0, 0x000000, { roughness: 1 });
     // Floor grid lines
     for (let x = -8; x <= 8; x += 2) box(0.06, 0.02, 14, x, 0.03, 0, 0x2a4a70);
     for (let z = -6; z <= 6; z += 2) box(18, 0.02, 0.06, 0, 0.03, z, 0x1a3a5c);
