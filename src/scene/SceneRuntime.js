@@ -682,6 +682,10 @@ export class SceneRuntime {
       this.scene.add(next);
       this.model = next;
       this._fit(this.model);
+      // 模型入场景后再强制遍历一次，确保所有网格（含地面）启用阴影
+      next.traverse((o) => {
+        if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }
+      });
       // 强制阴影贴图更新，确保导入模型立即有阴影
       this.sun.shadow.needsUpdate = true;
       this.renderer.shadowMap.needsUpdate = true;
