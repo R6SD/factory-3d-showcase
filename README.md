@@ -3,6 +3,8 @@
 一个纯前端的工厂三维展示与企业工作台。支持本地模型导入、场景与光影调节、可编辑的三维悬浮标签、模型库、组织关系和中英文界面。
 
 > 版权：Copyright © 2026 Youhui Wen
+>
+> 本项目以 [MIT 许可证](./LICENSE) 开源，欢迎自由使用、修改与分发。
 
 ## 快速开始
 
@@ -87,6 +89,8 @@ npm run package:win
 
 安装版默认安装到 `D:\工厂 Web3D 工作台`，并生成 `unins000.exe` 用于卸载。
 
+本项目为开源软件，不购买商业代码签名证书；Windows 首次运行安装包或便携版时可能出现 SmartScreen 筛选提示，选择「更多信息 → 仍要运行」即可。`package:win` 已通过 `CSC_IDENTITY_AUTO_DISCOVERY=false` 跳过自动签名。
+
 ## 功能说明
 
 - 导入 GLB、glTF、FBX、OBJ 模型（单文件最大 200 MB），支持拖拽文件到三维场景区域直接导入。
@@ -163,6 +167,12 @@ build/
 
 便携 EXE 每次运行都需要在临时目录解压，建议长期使用安装版。
 
-## 开源依赖
+## 开源许可证
 
-本项目使用 React、Vite、Three.js、Electron 与 electron-builder。请遵守各依赖对应许可证。
+本项目基于 [MIT 许可证](./LICENSE) 发布，Copyright © 2026 Youhui Wen。你可以自由使用、复制、修改、合并、发布、分发、再授权及销售本软件副本，唯须在所有副本中保留上述版权声明与本许可声明。本软件按“现状”提供，不附带任何明示或默示担保，作者或版权持有人不承担任何相关责任。
+
+已编译的 Windows 安装包见 [Releases](https://github.com/R6SD/factory-3d-showcase/releases)。
+
+### 开源依赖
+
+本项目使用 React、Vite、Three.js、Electron 与 electron-builder 等开源组件，请遵守各依赖对应许可证。

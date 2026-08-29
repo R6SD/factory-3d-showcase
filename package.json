@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "工厂 Web3D 工作台",
   "author": "Youhui Wen",
+  "license": "MIT",
   "copyright": "Copyright © 2026 Youhui Wen",
   "type": "module",
   "main": "electron/main.cjs",
@@ -13,7 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "desktop": "npm run build && electron .",
-    "package:win": "npm run build && electron-builder --win nsis portable"
+    "package:win": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis portable"
   },
   "dependencies": {
     "lucide-react": "^1.33.0",
@@ -23,6 +24,7 @@
     "three": "^0.180.0"
   },
   "devDependencies": {
+    "cross-env": "^10.1.0",
     "electron": "^37.2.6",
     "electron-builder": "^26.0.12",
     "jsdom": "^29.1.1",
