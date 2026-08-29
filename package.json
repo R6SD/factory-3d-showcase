@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "工厂 Web3D 工作台",
   "author": "Youhui Wen",
-  "license": "MIT",
   "copyright": "Copyright © 2026 Youhui Wen",
   "type": "module",
   "main": "electron/main.cjs",
