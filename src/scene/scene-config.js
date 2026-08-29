@@ -23,6 +23,8 @@ export const defaults = {
     sunAzimuth: 45, sunElevation: 60, sunManual: false,
     // 裸眼 3D：stereoMode=off 关闭 | parallax 运动视差(裸眼、单目无重影) | barrier 视差屏障 | sbs 并排立体 | anaglyph 红蓝立体
     stereoMode: 'parallax', parallaxStrength: .4, parallaxAuto: false,
+    // 查看页 UI 层流星氛围背景（纯 CSS、不影响 WebGL），可在“模型与场景”设置中关闭
+    fxMeteors: true,
   },
   carousel: { enabled: false, interval: 8, modelNames: [] },
 };

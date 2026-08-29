@@ -429,3 +429,24 @@ header{backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16p
 .employee-form input,.employee-form select{padding:8px 10px;border-radius:6px;border:1px solid rgba(107,159,255,.25);background:rgba(255,255,255,.04);color:var(--text);font:13px "Noto Sans SC"}
 .employee-form select option{background:#0d1526}
 .form-row-actions{display:flex;gap:10px;margin-top:6px}
+
+/* ============ 界面动效组件（src/ui/effects.jsx）：数字滚动 / 环形进度 / 流星背景 ============ */
+.number-ticker{font-variant-numeric:tabular-nums}
+/* 环形进度 */
+.ring-progress{position:relative;display:inline-grid;place-items:center;flex:none}
+.ring-progress-bar{transition:stroke-dasharray .8s cubic-bezier(.22,.8,.32,1)}
+.ring-center{position:absolute;inset:0;display:grid;place-items:center;text-align:center;font:600 13px "JetBrains Mono","Noto Sans SC",monospace;color:#cfe2ff;line-height:1.1}
+.ring-center small{display:block;font:10px "Noto Sans SC";color:#7f97b8;margin-top:1px}
+/* 流星氛围层：位于 viewer 点阵纹理(z-index:1)之上、标签(z-index:6)与控件之下，不拦截交互 */
+.fx-meteors{position:absolute;inset:0;z-index:2;overflow:hidden;pointer-events:none;border-radius:inherit}
+.fx-meteor{position:absolute;top:-2%;border-radius:9999px;background:linear-gradient(to bottom,#dcebff,rgba(110,168,255,.55) 42%,transparent 74%);box-shadow:0 0 6px rgba(140,190,255,.5);animation-name:factory-meteor;animation-timing-function:linear;animation-iteration-count:infinite}
+.fx-meteor::before{content:"";position:absolute;top:50%;right:1px;transform:translateY(-50%);width:78px;height:1px;background:linear-gradient(to left,rgba(156,197,255,.7),transparent)}
+@keyframes factory-meteor{
+  0%{transform:rotate(215deg) translateX(0);opacity:0}
+  6%{opacity:.95}
+  72%{opacity:.65}
+  100%{transform:rotate(215deg) translateX(-120vh);opacity:0}
+}
+@media (prefers-reduced-motion: reduce){.fx-meteors{display:none!important}.ring-progress-bar{transition:none!important}}
+.drawer-ring{display:flex;justify-content:center;margin:8px 0 4px}
+.drawer-ring .ring-center .huge{font-size:22px;margin:0}
