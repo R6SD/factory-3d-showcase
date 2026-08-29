@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EVENTS, dispatch, listen } from '../events.js';
 import { loadModelFile } from './ModelLoader.js';
 import { StereoPipeline, normalizePointer, damp, parallaxEyeOffset, autoSway } from './stereo.js';
+import { parallaxSettled, shouldRenderFrame, shouldUpdateShadow } from './render-policy.js';
 
 /**
  * SceneRuntime — owns the Three.js scene, render loop, and model lifecycle.
@@ -314,6 +315,13 @@ export class SceneRuntime {
     this._lastFpsTime = performance.now();
     this._currentFps = 0;
 
+    // 性能计数：实际提交 WebGL 渲染的帧数 / 被跳过的帧数（getPerf 按秒换算速率）
+    this._renderedFrames = 0;
+    this._skippedFrames = 0;
+    this._lastPerfAt = performance.now();
+    this._lastCalls = 0;
+    this._lastTris = 0;
+
     // Sun cycle cache
     this._sunCache = { sec: -1, h: 0, e: 0, z: 0 };
 
@@ -354,9 +362,14 @@ export class SceneRuntime {
     const root = this._root;
 
     // Renderer
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    // powerPreference:'high-performance' 让双显卡（核显+独显）设备优先使用独立 GPU
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // 阴影只取决于模型与光源的相对关系，静态查看/轨道旋转/视差时无需每帧重算：
+    // 关闭自动更新，改由帧循环按 shouldUpdateShadow 在确有动画或显式标脏时更新一次
+    this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.shadowMap.needsUpdate = true;
     root.append(this.renderer.domElement);
 
     // WebGL context lost handling
@@ -571,6 +584,18 @@ export class SceneRuntime {
   fit(obj) { this._fit(obj || this.model); }
   getFps() { return this._currentFps; }
 
+  /** 自上次调用以来的渲染/跳过帧速率与最近一帧绘制调用、三角面（性能面板用） */
+  getPerf() {
+    const now = performance.now();
+    const dt = Math.max(1, (now - this._lastPerfAt) / 1000);
+    const rfs = Math.round(this._renderedFrames / dt);
+    const sfs = Math.round(this._skippedFrames / dt);
+    this._renderedFrames = 0;
+    this._skippedFrames = 0;
+    this._lastPerfAt = now;
+    return { rfs, sfs, calls: this._lastCalls, tris: this._lastTris, mode: this.getStereoMode() };
+  }
+
   /**
    * 3D 空间按压回弹：相机会拉近 + 模型整体缩小，产生空间凹下去的感觉；
    * 松开时弹簧回弹，带一次过冲，产生果冻般凸显的爽感。
@@ -781,6 +806,7 @@ export class SceneRuntime {
     const shadowSize = { low: 512, medium: 1024, high: 2048 }[sceneConfig.shadowQuality] || 1024;
     r.sun.shadow.mapSize.set(shadowSize, shadowSize);
     r.sun.shadow.needsUpdate = true;
+    r.renderer.shadowMap.needsUpdate = true;
     r.renderer.toneMappingExposure = sceneConfig.exposure;
     r.renderer.setPixelRatio(sceneConfig.dpr === 'auto' ? Math.min(devicePixelRatio, 2) : Number(sceneConfig.dpr));
     // 阴影柔化等参数变化时，按当前模型重算阴影相机范围（不重置用户相机）
@@ -929,11 +955,14 @@ export class SceneRuntime {
     const { nx, ny } = normalizePointer(e.clientX, e.clientY, rect);
     this._parallax.targetX = nx;
     this._parallax.targetY = ny;
+    // 指针移动当帧立即恢复渲染，直到视差阻尼重新收敛（配合 shouldRenderFrame 的静止停绘）
+    this._needsRender = true;
   }
 
   _onPointerLeave() {
     this._parallax.targetX = 0;
     this._parallax.targetY = 0;
+    this._needsRender = true;
   }
 
   _onKey(e) {
@@ -970,8 +999,12 @@ export class SceneRuntime {
     this.mixer?.update(dt);
     this.control.update();
 
+    // 静态展示模式（display:'static'）冻结传送带/粒子等环境动画，让画面真正静止、可空闲省电；
+    // dynamic / showcase 模式行为不变
+    const envPaused = sc.display === 'static';
+
     // Conveyor animation
-    const convRef = this.model?.userData?.conveyor;
+    const convRef = envPaused ? null : this.model?.userData?.conveyor;
     if (convRef) {
       const t = performance.now() * 0.001;
       convRef.userData.rollers.forEach((c, i) => { c.rotation.x = t * 2 + i * 0.3; });
@@ -982,17 +1015,19 @@ export class SceneRuntime {
       });
     }
 
-    // Particles
-    const pArr = this._pGeo.attributes.position.array;
-    for (let i = 0; i < this._pCount; i++) {
-      pArr[i * 3 + 1] += this._pSpeed[i];
-      if (pArr[i * 3 + 1] > 8) {
-        pArr[i * 3 + 1] = 0;
-        pArr[i * 3] = (Math.random() - 0.5) * 20;
-        pArr[i * 3 + 2] = (Math.random() - 0.5) * 16;
+    // Particles（静态模式冻结，避免无谓的 CPU 写缓冲与 GPU 重传）
+    if (!envPaused) {
+      const pArr = this._pGeo.attributes.position.array;
+      for (let i = 0; i < this._pCount; i++) {
+        pArr[i * 3 + 1] += this._pSpeed[i];
+        if (pArr[i * 3 + 1] > 8) {
+          pArr[i * 3 + 1] = 0;
+          pArr[i * 3] = (Math.random() - 0.5) * 20;
+          pArr[i * 3 + 2] = (Math.random() - 0.5) * 16;
+        }
       }
+      this._pGeo.attributes.position.needsUpdate = true;
     }
-    this._pGeo.attributes.position.needsUpdate = true;
 
     // Entrance animation
     if (this.entranceStart > 0 && this.model && this.model.userData.tScale) {
@@ -1176,12 +1211,29 @@ export class SceneRuntime {
     }
 
     // Render（启用视差或双目立体时需要持续渲染）
-    const stereoActive = px.enabled || (this.stereo?.isDualEye ?? false);
-    const hasAnim = this.mixer || this.entranceStart > 0 || this.exitingModel || sc.sunCycle !== false || this.model?.userData?.conveyor;
-    if (this._needsRender || hasAnim || stereoActive) {
+    // 视差只在“阻尼未收敛 / 自动微摆 / 双目输出”时需要连续渲染；指针静止、偏移收敛后
+    // 回到按需渲染，避免“视差开关常开”导致的逐帧空转
+    const dualEye = this.stereo?.isDualEye ?? false;
+    const pxSettled = !px.enabled || (!px.auto && parallaxSettled(px.curX, px.curY, px.targetX, px.targetY));
+    const hasAnim = this.mixer || this.entranceStart > 0 || this.exitingModel || sc.sunCycle !== false || (!envPaused && this.model?.userData?.conveyor);
+    const doRender = shouldRenderFrame({
+      needs: this._needsRender, hasAnim, dualEye,
+      parallaxEnabled: px.enabled, autoSway: px.auto, settled: pxSettled,
+    });
+    if (doRender) {
+      // 阴影按需：仅场景动画时重算阴影贴图，轨道旋转/运动视差/纯静态不重算
+      // （换模型、改阴影质量等离散事件在各自位置直接置 needsUpdate）
+      if (shouldUpdateShadow({ hasAnim })) {
+        this.renderer.shadowMap.needsUpdate = true;
+      }
       if (this.stereo) this.stereo.render(this.scene, this.camera);
       else this.renderer.render(this.scene, this.camera);
       this._needsRender = false;
+      this._renderedFrames++;
+      this._lastCalls = this.renderer.info.render.calls;
+      this._lastTris = this.renderer.info.render.triangles;
+    } else {
+      this._skippedFrames++;
     }
     // 还原相机位置：离轴偏移只作用于本帧渲染，不进入 OrbitControls 的轨道状态
     if (parallaxApplied) this.camera.position.copy(this._tmpBasePos);
@@ -1209,6 +1261,7 @@ export class SceneRuntime {
       getModelInfo: () => rt.getModelInfo(),
       setDisplayMode: (m) => rt.setDisplayMode(m),
       getFps: () => rt.getFps(),
+      getPerf: () => rt.getPerf(),
       getModelTree: () => rt.getModelTree(),
       focusNode: (u) => rt.focusNode(u),
       toggleNodeVisible: (u) => rt.toggleNodeVisible(u),
@@ -1226,6 +1279,7 @@ export class SceneRuntime {
     window.__factorySetDisplayMode = (m) => rt.setDisplayMode(m);
     window.__factoryGetDisplayMode = () => rt._displayMode;
     window.__factoryGetFps = () => rt.getFps();
+    window.__factoryGetPerf = () => rt.getPerf();
     window.__factoryGetModelTree = () => rt.getModelTree();
     window.__factoryFocusNode = (u) => rt.focusNode(u);
     window.__factoryToggleNodeVisible = (u) => rt.toggleNodeVisible(u);
@@ -1264,6 +1318,7 @@ export class SceneRuntime {
     window.__factorySetDisplayMode = null;
     window.__factoryGetDisplayMode = null;
     window.__factoryGetFps = null;
+    window.__factoryGetPerf = null;
     window.__factoryGetModelTree = null;
     window.__factoryFocusNode = null;
     window.__factoryToggleNodeVisible = null;
