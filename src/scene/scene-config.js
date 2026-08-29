@@ -21,6 +21,8 @@ export const defaults = {
     fov: 35, dpr: 'auto', preset: 'balanced', grid: false, shadows: true,
     rotate: true, zoom: true, pan: true, sunCycle: false,
     sunAzimuth: 45, sunElevation: 60, sunManual: false,
+    // 裸眼 3D：stereoMode=off 关闭 | parallax 运动视差(裸眼、单目无重影) | barrier 视差屏障 | sbs 并排立体 | anaglyph 红蓝立体
+    stereoMode: 'parallax', parallaxStrength: .4, parallaxAuto: false,
   },
   carousel: { enabled: false, interval: 8, modelNames: [] },
 };

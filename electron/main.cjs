@@ -9,6 +9,7 @@ app.setPath('userData', path.join(app.getPath('appData'), 'Factory Web3D Workben
 const mime = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.json':'application/json', '.svg':'image/svg+xml', '.png':'image/png', '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.webp':'image/webp', '.ico':'image/x-icon', '.woff2':'font/woff2' };
 const MAX_MODEL_BYTES = 200 * 1024 * 1024;
 const MAX_LABEL_BYTES = 512 * 1024;
+const MAX_BUSINESS_BYTES = 2 * 1024 * 1024;
 const LOCAL_PORT = 43891;
 const MAX_PORT_RETRIES = 10;
 
@@ -76,10 +77,45 @@ function handleLabelsApi(request, response, labelsFile) {
   });
 }
 
+// 业务数据（产能/场地/人员/组织）整库读写：GET 读取，PUT 整份落盘。
+// 前端首次访问空库时会用内置种子回填；数据模型由前端掌握，后端只做通用持久化，便于日后替换为 MES/IoT/HR。
+function handleBusinessApi(request, response, businessFile) {
+  if (request.method === 'GET') {
+    fs.readFile(businessFile, 'utf8', (error, content) => {
+      if (error) {
+        if (error.code === 'ENOENT') {
+          response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'X-Factory-Data-Store': '1' });
+          response.end('null');
+          return;
+        }
+        response.writeHead(500); response.end('Could not read business data'); return;
+      }
+      response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'X-Factory-Data-Store': '1' });
+      response.end(content);
+    });
+    return;
+  }
+  if (request.method !== 'PUT') { response.writeHead(405); response.end('Method not allowed'); return; }
+  if (Number(request.headers['content-length'] || 0) > MAX_BUSINESS_BYTES) {
+    response.writeHead(413); response.end('Business data too large'); return;
+  }
+  let body = '';
+  request.on('data', (chunk) => { body += chunk; if (body.length > MAX_BUSINESS_BYTES) request.destroy(); });
+  request.on('end', () => {
+    try { JSON.parse(body); } catch { response.writeHead(400); response.end('Invalid JSON'); return; }
+    fs.writeFile(businessFile, body, 'utf8', (error) => {
+      if (error) { response.writeHead(500); response.end('Could not save business data'); return; }
+      response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'X-Factory-Data-Store': '1' });
+      response.end('{"ok":true}');
+    });
+  });
+}
+
 function startLocalServer() {
   const appRoot = app.isPackaged ? path.join(app.getAppPath(), 'dist') : path.join(__dirname, '..', 'dist');
   const modelsDirectory = path.join(app.getPath('userData'), 'models');
   const labelsFile = path.join(app.getPath('userData'), 'labels.json');
+  const businessFile = path.join(app.getPath('userData'), 'business.json');
   fs.mkdirSync(modelsDirectory, { recursive: true });
   let server;
   server = http.createServer((request, response) => {
@@ -91,6 +127,7 @@ function startLocalServer() {
     }
     if (url.pathname === '/api/models') { handleModelApi(request, response, url, modelsDirectory); return; }
     if (url.pathname === '/api/labels') { handleLabelsApi(request, response, labelsFile); return; }
+    if (url.pathname === '/api/data/business') { handleBusinessApi(request, response, businessFile); return; }
     const rawPath = decodeURIComponent(url.pathname);
     const relativePath = rawPath === '/' ? 'index.html' : rawPath.replace(/^[/\\]+/, '');
     const target = path.resolve(appRoot, relativePath);

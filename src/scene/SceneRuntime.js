@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EVENTS, dispatch, listen } from '../events.js';
 import { loadModelFile } from './ModelLoader.js';
+import { StereoPipeline, normalizePointer, damp, parallaxEyeOffset, autoSway } from './stereo.js';
 
 /**
  * SceneRuntime — owns the Three.js scene, render loop, and model lifecycle.
@@ -323,6 +324,14 @@ export class SceneRuntime {
     this._baseCameraZoom = 1;
     this._lastFrameTime = performance.now();
 
+    // Glasses-free 3D：运动视差状态 + 双目立体管线（在 _init 中创建 pipeline）
+    this.stereo = null;
+    this._parallax = { targetX: 0, targetY: 0, curX: 0, curY: 0, strength: 0.4, auto: false, enabled: false };
+    this._parallaxGain = 0.12; // 视差位移占“相机到注视点距离”的比例
+    this._tmpRight = new THREE.Vector3();
+    this._tmpUp = new THREE.Vector3();
+    this._tmpBasePos = new THREE.Vector3();
+
     // Observers / handlers (bound for removal)
     this._observer = null;
     this._onDragOver = this._onDragOver.bind(this);
@@ -333,6 +342,8 @@ export class SceneRuntime {
     this._onImport = this._onImport.bind(this);
     this._onShowDefault = this._onShowDefault.bind(this);
     this._onReset = this._onReset.bind(this);
+    this._onPointerMove = this._onPointerMove.bind(this);
+    this._onPointerLeave = this._onPointerLeave.bind(this);
 
     this._init();
   }
@@ -417,6 +428,11 @@ export class SceneRuntime {
     root.addEventListener('dragover', this._onDragOver);
     root.addEventListener('dragleave', this._onDragLeave);
     root.addEventListener('drop', this._onDrop);
+
+    // Glasses-free 3D：立体渲染管线 + 指针运动视差
+    this.stereo = new StereoPipeline(this.renderer);
+    this.renderer.domElement.addEventListener('pointermove', this._onPointerMove);
+    this.renderer.domElement.addEventListener('pointerleave', this._onPointerLeave);
 
     // Keyboard
     window.addEventListener('keydown', this._onKey);
@@ -539,6 +555,7 @@ export class SceneRuntime {
     const r = this._root.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) return;
     this.renderer.setSize(r.width, r.height);
+    this.stereo?.setSize(r.width, r.height);
     this.camera.aspect = r.width / r.height;
     this.camera.updateProjectionMatrix();
     // 仅首次挂载按真实宽高比自动取景；之后的尺寸变化（切换导航、缩放窗口）保留用户当前视角
@@ -601,7 +618,9 @@ export class SceneRuntime {
   }
 
   screenshot() {
-    this.renderer.render(this.scene, this.camera);
+    // 截图强制单目渲染，避免截到红蓝/分屏立体画面
+    if (this.stereo) this.stereo.renderPlain(this.scene, this.camera);
+    else this.renderer.render(this.scene, this.camera);
     const url = this.renderer.domElement.toDataURL('image/png');
     const a = document.createElement('a');
     a.href = url;
@@ -650,6 +669,17 @@ export class SceneRuntime {
   setDisplayMode(mode) {
     this._displayMode = mode;
     this._applyDisplayMode(this.model);
+  }
+
+  /** 切换裸眼 3D / 立体模式（也可由 updateConfig 统一驱动） */
+  setStereoMode(mode) {
+    this.stereo?.setMode(mode);
+    this._parallax.enabled = !!mode && mode !== 'off';
+    this._needsRender = true;
+  }
+
+  getStereoMode() {
+    return this.stereo?.mode || 'off';
   }
 
   _buildTree(obj) {
@@ -760,6 +790,12 @@ export class SceneRuntime {
       const ct = b.getCenter(new THREE.Vector3());
       this._setupSunForBounds(sz, ct, Math.max(sz.x, sz.y, sz.z), false);
     }
+    // 裸眼 3D：运动视差参数 + 双目立体输出模式
+    const px = this._parallax;
+    px.strength = sceneConfig.parallaxStrength ?? 0.4;
+    px.auto = sceneConfig.parallaxAuto === true;
+    px.enabled = sceneConfig.stereoMode && sceneConfig.stereoMode !== 'off';
+    this.stereo?.setMode(sceneConfig.stereoMode || 'off');
     this._needsRender = true;
   }
 
@@ -886,6 +922,18 @@ export class SceneRuntime {
     if (f && /\.(glb|gltf|fbx|obj)$/i.test(f.name)) {
       dispatch(EVENTS.IMPORT, { file: f, silent: false });
     }
+  }
+
+  _onPointerMove(e) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const { nx, ny } = normalizePointer(e.clientX, e.clientY, rect);
+    this._parallax.targetX = nx;
+    this._parallax.targetY = ny;
+  }
+
+  _onPointerLeave() {
+    this._parallax.targetX = 0;
+    this._parallax.targetY = 0;
   }
 
   _onKey(e) {
@@ -1104,12 +1152,39 @@ export class SceneRuntime {
       this._lastFpsTime = now;
     }
 
-    // Render
+    // Glasses-free 3D：运动视差（指针 / 自动微摆），帧率无关阻尼后对相机做离轴偏移
+    const px = this._parallax;
+    let parallaxApplied = false;
+    if (px.enabled) {
+      let tx = px.targetX, ty = px.targetY;
+      if (px.auto) { const sway = autoSway(frameNow / 1000); tx = sway.nx; ty = sway.ny; }
+      px.curX = damp(px.curX, tx, 6, dt);
+      px.curY = damp(px.curY, ty, 6, dt);
+      const off = parallaxEyeOffset(px.curX, px.curY, px.strength);
+      // 偏移幅度与“相机到注视点距离”成比例，保证不同模型缩放下视差观感一致
+      const dist = this.camera.position.distanceTo(this.control.target);
+      const amp = dist * this._parallaxGain;
+      if (Math.abs(off.fx) > 0.0005 || Math.abs(off.fy) > 0.0005) {
+        this._tmpRight.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
+        this._tmpUp.set(0, 1, 0).applyQuaternion(this.camera.quaternion);
+        this._tmpBasePos.copy(this.camera.position);
+        this.camera.position
+          .addScaledVector(this._tmpRight, off.fx * amp)
+          .addScaledVector(this._tmpUp, off.fy * amp);
+        parallaxApplied = true;
+      }
+    }
+
+    // Render（启用视差或双目立体时需要持续渲染）
+    const stereoActive = px.enabled || (this.stereo?.isDualEye ?? false);
     const hasAnim = this.mixer || this.entranceStart > 0 || this.exitingModel || sc.sunCycle !== false || this.model?.userData?.conveyor;
-    if (this._needsRender || hasAnim) {
-      this.renderer.render(this.scene, this.camera);
+    if (this._needsRender || hasAnim || stereoActive) {
+      if (this.stereo) this.stereo.render(this.scene, this.camera);
+      else this.renderer.render(this.scene, this.camera);
       this._needsRender = false;
     }
+    // 还原相机位置：离轴偏移只作用于本帧渲染，不进入 OrbitControls 的轨道状态
+    if (parallaxApplied) this.camera.position.copy(this._tmpBasePos);
     this._frame = requestAnimationFrame(() => this._loop());
   }
 
@@ -1142,6 +1217,8 @@ export class SceneRuntime {
       projectPoint: (local) => rt.projectPoint(local),
       raycast: (x, y) => rt.raycast(x, y),
       pressBounce: (active) => rt.pressBounce(active),
+      setStereoMode: (m) => rt.setStereoMode(m),
+      getStereoMode: () => rt.getStereoMode(),
     };
     window.__factorySetView = (p) => rt.setView(p);
     window.__factoryScreenshot = () => rt.screenshot();
@@ -1165,6 +1242,8 @@ export class SceneRuntime {
     this._root.removeEventListener('dragover', this._onDragOver);
     this._root.removeEventListener('dragleave', this._onDragLeave);
     this._root.removeEventListener('drop', this._onDrop);
+    this.renderer.domElement.removeEventListener('pointermove', this._onPointerMove);
+    this.renderer.domElement.removeEventListener('pointerleave', this._onPointerLeave);
     this._observer?.disconnect();
     cancelAnimationFrame(this._frame);
     if (this.exitingModel) {
@@ -1174,6 +1253,7 @@ export class SceneRuntime {
     this._disposeObject(this.model);
     this._pGeo?.dispose();
     this._pMat?.dispose();
+    this.stereo?.dispose();
     this.renderer.dispose();
     this._root.replaceChildren();
     // Clear globals
