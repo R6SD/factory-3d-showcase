@@ -12,10 +12,7 @@ const MAX_LABEL_BYTES = 512 * 1024;
 const LOCAL_PORT = 43891;
 const MAX_PORT_RETRIES = 10;
 
-function safeModelName(value) {
-  const name = path.basename(String(value || '')).replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim();
-  return name && name !== '.' && name !== '..' ? name : null;
-}
+const { safeModelName } = require('./safe-name.cjs');
 
 function handleModelApi(request, response, url, modelsDirectory) {
   const name = safeModelName(url.searchParams.get('name'));
@@ -97,7 +94,8 @@ function startLocalServer() {
     const rawPath = decodeURIComponent(url.pathname);
     const relativePath = rawPath === '/' ? 'index.html' : rawPath.replace(/^[/\\]+/, '');
     const target = path.resolve(appRoot, relativePath);
-    if (!target.startsWith(appRoot)) { response.writeHead(403); response.end(); return; }
+    // 必须是 appRoot 本身或其直接子路径，防止 dist-evil 等同名前缀目录绕过
+    if (target !== appRoot && !target.startsWith(appRoot + path.sep)) { response.writeHead(403); response.end(); return; }
     fs.readFile(target, (error, content) => {
       if (error) {
         fs.readFile(path.join(appRoot, 'index.html'), (fallbackError, fallback) => {

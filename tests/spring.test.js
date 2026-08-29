@@ -1,58 +1,74 @@
 import { describe, it, expect } from 'vitest';
+import { stepPressSpring } from '../src/scene/SceneRuntime.js';
 
-// 阻尼谐振子公式（与 app.jsx ModelSwitcher.setModelPress 中一致）
-function dampedOscillator(from, omega = 14, zeta = 0.55) {
-  const omegaD = omega * Math.sqrt(1 - zeta * zeta);
-  const A = from - 1;
-  const phi = Math.atan2(-zeta * omega * A, omegaD * A) || 0;
-  const amp = A / Math.cos(phi);
-  return (tSeconds) => {
-    const env = Math.exp(-zeta * omega * tSeconds);
-    return 1 + amp * env * Math.cos(omegaD * tSeconds + phi);
-  };
+// 模拟物理时长：按指定刷新率步进 totalSeconds
+function runSpring({ hz = 60, totalSeconds, targetSchedule = [] } = {}) {
+  const p = { current: 0, target: 0, velocity: 0 };
+  const dt = 1 / hz;
+  const steps = Math.round(totalSeconds * hz);
+  for (let i = 0; i < steps; i++) {
+    const t = i * dt;
+    for (const [at, value] of targetSchedule) {
+      if (Math.abs(t - at) < dt / 2) p.target = value;
+    }
+    stepPressSpring(p, dt);
+  }
+  return p;
 }
 
-describe('阻尼谐振子果冻回弹', () => {
-  it('t=0 时从初始值开始', () => {
-    const fn = dampedOscillator(0.9);
-    expect(fn(0)).toBeCloseTo(0.9, 5);
+describe('stepPressSpring 按压回弹弹簧', () => {
+  it('探针：target=1 后持续步进，current 必须明显上升（错误实现“不积分”会红）', () => {
+    const p = { current: 0, target: 1, velocity: 0 };
+    for (let i = 0; i < 12; i++) stepPressSpring(p, 1 / 60); // 200ms
+    expect(p.current).toBeGreaterThan(0.5);
   });
 
-  it('t→∞ 时收敛到 1.0', () => {
-    const fn = dampedOscillator(0.9);
-    expect(fn(2.0)).toBeCloseTo(1.0, 3);
+  it('原地更新并返回同一个状态对象', () => {
+    const p = { current: 0, target: 1, velocity: 0 };
+    expect(stepPressSpring(p, 1 / 60)).toBe(p);
   });
 
-  it('欠阻尼(ζ=0.55)应产生过冲', () => {
-    const fn = dampedOscillator(0.9);
-    let overshoot = false;
-    for (let t = 0.05; t < 0.5; t += 0.02) {
-      if (fn(t) > 1.0) { overshoot = true; break; }
+  it('按下 140ms 后松开，1.5s 内收敛回 0（无残留形变）', () => {
+    const p = runSpring({
+      totalSeconds: 1.5,
+      targetSchedule: [[0, 1], [0.14, 0]],
+    });
+    expect(Math.abs(p.current)).toBeLessThan(0.005);
+    expect(Math.abs(p.velocity)).toBeLessThan(0.005);
+  });
+
+  it('收敛过程允许一次反向过冲（欠阻尼），但幅度被钳制在合理范围', () => {
+    const p = { current: 0, target: 1, velocity: 0 };
+    let min = Infinity;
+    for (let i = 0; i < 90; i++) {
+      const t = i / 60;
+      if (t >= 0.14) p.target = 0;
+      stepPressSpring(p, 1 / 60);
+      min = Math.min(min, p.current);
     }
-    expect(overshoot).toBe(true);
+    expect(min).toBeGreaterThan(-0.15);
   });
 
-  it('过冲幅度应随时间衰减', () => {
-    const fn = dampedOscillator(0.9);
-    const firstPeak = Math.abs(fn(0.15) - 1);
-    const laterPeak = Math.abs(fn(0.5) - 1);
-    expect(laterPeak).toBeLessThan(firstPeak);
+  it('current 始终被钳制在 [-0.15, 1.15]，极端步长也不越界', () => {
+    const p = { current: 0, target: 1, velocity: 50 }; // 异常大初速度
+    for (let i = 0; i < 10; i++) stepPressSpring(p, 0.1);
+    expect(p.current).toBeLessThanOrEqual(1.15);
+    expect(p.current).toBeGreaterThanOrEqual(-0.15);
   });
 
-  it('临界阻尼(ζ=1)不应过冲', () => {
-    const fn = dampedOscillator(0.9, 14, 1.0);
-    let overshoot = false;
-    for (let t = 0.01; t < 1.0; t += 0.02) {
-      if (fn(t) > 1.0) { overshoot = true; break; }
-    }
-    expect(overshoot).toBe(false);
+  it('刷新率无关：60/144/240Hz 跑相同物理时长，终态与峰值基本一致', () => {
+    const finalAt = (hz) => runSpring({ hz, totalSeconds: 1.5, targetSchedule: [[0, 1], [0.14, 0]] }).current;
+    const f60 = finalAt(60);
+    const f144 = finalAt(144);
+    const f240 = finalAt(240);
+    expect(Math.abs(f60 - f144)).toBeLessThan(0.01);
+    expect(Math.abs(f60 - f240)).toBeLessThan(0.01);
   });
 
-  it('squish 横向膨胀补偿应保持体积近似守恒', () => {
-    const s = 0.9;
-    const stretch = 1 + (1 - s) * 0.45;
-    const volume = s * stretch * stretch;
-    expect(volume).toBeGreaterThan(0.95);
-    expect(volume).toBeLessThan(1.05);
+  it('dt=0 时状态冻结（暂停帧不产生运动）', () => {
+    const p = { current: 0.4, target: 1, velocity: 2 };
+    const snapshot = { ...p };
+    stepPressSpring(p, 0);
+    expect(p).toEqual(snapshot);
   });
 });

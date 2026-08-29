@@ -8,12 +8,21 @@ function viewerTitle() {
   return storedConfig().viewer || {};
 }
 
+// 存在“真实活动模型”时，居中 h2 应由 React 显示模型名（见 src/scene/viewer-title.js 的 pickHomeTitle）。
+// 此时命令式写 h2 会把模型名覆盖成自定义标题，造成“模型名称没有同步显示”，故这些标识之外才允许脚本写标题。
+function activeModelName() {
+  const name = localStorage.getItem('factory-active-model');
+  return name && name !== '__factory_default__' && name !== 'Factory Campus A.glb' ? name : null;
+}
+
 function updateTitle(viewer = viewerTitle()) {
   const bar = document.querySelector('.viewer-top');
   if (!bar) return;
   const eyebrow = bar.querySelector('small');
   const title = bar.querySelector('h2');
   if (eyebrow && viewer.eyebrow && eyebrow.textContent !== viewer.eyebrow) eyebrow.textContent = viewer.eyebrow;
+  // 加载着真实模型时，h2 显示模型名，脚本不得覆盖（切换回默认模型后 React 会渲染自定义标题）
+  if (activeModelName()) return;
   const nextTitle = storedConfig().language === 'en' ? (viewer.titleEn || viewer.title || title?.textContent) : (viewer.title || title?.textContent);
   if (title && nextTitle && title.textContent !== nextTitle) title.textContent = nextTitle;
 }

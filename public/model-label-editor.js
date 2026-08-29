@@ -3,6 +3,9 @@ const LABEL_DEFAULT_MODEL = '__factory_default__';
 const DEFAULT_OFFSET = { x: 58, y: -48 };
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
+// 上一个 viewer 实例的清理句柄：路由切换导致 viewer 重建时，注销旧 RAF/监听，避免泄漏累积
+let teardownCurrentEditor = null;
+
 function activeModel() { return localStorage.getItem('factory-active-model') || LABEL_DEFAULT_MODEL; }
 
 function migrateLegacyLabels() {
@@ -89,11 +92,21 @@ function mountLabelEditor() {
   const viewer = document.querySelector('.viewer');
   const runtime = window.__factorySceneRuntime;
   if (!viewer || !runtime || viewer.dataset.labelEditorReady) return;
+  // 清理上一个已销毁 viewer 的编辑器（路由重挂载场景）
+  teardownCurrentEditor?.();
+  teardownCurrentEditor = null;
   viewer.dataset.labelEditorReady = 'true';
 
   let labels = readLabels();
   let drag = null;
   let _raycaster = null, _pointer = null;
+  // viewer 的位置/尺寸只在窗口或布局变化时改变，缓存以避免每个标签每帧 getBoundingClientRect 强制回流
+  let cachedBounds = null;
+  const invalidateBounds = () => { cachedBounds = null; };
+  const viewerBounds = () => {
+    if (!cachedBounds) cachedBounds = viewer.getBoundingClientRect();
+    return cachedBounds;
+  };
 
   const layer = document.createElement('div');
   layer.className = 'model-label-layer';
@@ -202,7 +215,7 @@ function mountLabelEditor() {
     );
     const point = world.project(runtime.camera);
     if (point.z < -1 || point.z > 1) return null;
-    const box = viewer.getBoundingClientRect();
+    const box = viewerBounds();
     return {
       x: (point.x + 1) * 0.5 * box.width,
       y: (1 - point.y) * 0.5 * box.height,
@@ -317,11 +330,17 @@ function mountLabelEditor() {
   const refresh = () => {
     closeEditor();
     labels = readLabels();
+    invalidateBounds();
     renderLabels();
+    scheduleFollow();
   };
   window.addEventListener('factory-active-model-change', refresh);
 
+  let followRaf = 0;
   const follow = () => {
+    followRaf = 0;
+    // viewer 已脱离文档（路由切走）时停止循环，避免泄漏的 RAF 空转
+    if (!viewer.isConnected) return;
     const activeLabels = labelsForActiveModel();
     if (activeLabels.length > 0 && !document.hidden) {
       activeLabels.forEach((label) => {
@@ -330,15 +349,14 @@ function mountLabelEditor() {
           moveTag(tag, label);
         }
       });
-      requestAnimationFrame(follow);
-    } else {
-      // 无标签或页面隐藏时暂停循环，renderLabels/visibilitychange 时重启
-      follow._scheduled = false;
+      followRaf = requestAnimationFrame(follow);
     }
   };
-  follow._scheduled = false;
-  const scheduleFollow = () => { if (!follow._scheduled) { follow._scheduled = true; requestAnimationFrame(follow); } };
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) scheduleFollow(); });
+  const scheduleFollow = () => { if (!followRaf && viewer.isConnected) followRaf = requestAnimationFrame(follow); };
+  const onVisible = () => { if (!document.hidden) { invalidateBounds(); scheduleFollow(); } };
+  const onResize = () => { invalidateBounds(); scheduleFollow(); };
+  document.addEventListener('visibilitychange', onVisible);
+  window.addEventListener('resize', onResize);
 
   renderLabels();
   scheduleFollow();
@@ -365,7 +383,19 @@ function mountLabelEditor() {
     labels = Array.from(byId.values());
     localStorage.setItem(LABEL_STORE, JSON.stringify(labels));
     renderLabels();
+    scheduleFollow();
   }).catch(() => {});
+
+  // 登记清理句柄：下一个 viewer 挂载前注销本实例的全部 window/document 监听与 RAF
+  teardownCurrentEditor = () => {
+    if (followRaf) cancelAnimationFrame(followRaf);
+    followRaf = 0;
+    window.removeEventListener('factory-active-model-change', refresh);
+    document.removeEventListener('visibilitychange', onVisible);
+    window.removeEventListener('resize', onResize);
+    layer.remove();
+    teardownCurrentEditor = null;
+  };
 }
 
 window.addEventListener('factory-scene-ready', mountLabelEditor);

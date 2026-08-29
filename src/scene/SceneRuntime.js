@@ -16,12 +16,119 @@ import { loadModelFile } from './ModelLoader.js';
  */
 
 /**
+ * 按压回弹弹簧的单步积分（半隐式欧拉）。纯函数，便于单测覆盖收敛/钳制行为。
+ * 状态结构 { current, target, velocity }，原地更新并返回同一对象。
+ */
+export function stepPressSpring(p, dt, stiffness = 280, damping = 20) {
+  const force = -stiffness * (p.current - p.target) - damping * p.velocity;
+  p.velocity += (force * dt);
+  p.current += p.velocity * dt;
+  p.current = Math.max(-0.15, Math.min(1.15, p.current));
+  return p;
+}
+
+/**
+ * 计算参考网格的摆放（纯函数，便于单测）。
+ * 网格始终跟随模型包围盒（同一缩放、xz 中心、贴底面），而非固定在世界原点。
+ * 入参为普通 {x,y,z} 对象即可；返回 { scale, grid:[x,y,z] }。
+ */
+export function computeGridPlacement(size, center, boundsMinY) {
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const scale = Math.max(1, (maxDim / 22) * 1.25);
+  return {
+    scale,
+    grid: [center.x, boundsMinY - 0.04, center.z],
+  };
+}
+
+/**
+ * 将不参与物理光照的材质（Phong/Lambert/Basic 等）转换为 MeshStandardMaterial，
+ * 使其能接收方向光与阴影；已经是 Standard/Physical 的材质原样返回。
+ * 保留颜色、常用贴图与顶点色等关键视觉属性。
+ */
+export function convertMaterialToStandard(m) {
+  if (!m) return m;
+  if (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial) return m;
+  const p = {
+    color: (m.color && m.color.clone) ? m.color.clone() : new THREE.Color(0xffffff),
+    roughness: 0.65,
+    metalness: 0.15,
+  };
+  if (m.map) p.map = m.map;
+  if (m.normalMap) { p.normalMap = m.normalMap; p.normalScale = m.normalScale; }
+  if (m.roughnessMap) p.roughnessMap = m.roughnessMap;
+  if (m.metalnessMap) p.metalnessMap = m.metalnessMap;
+  if (m.aoMap) { p.aoMap = m.aoMap; p.aoMapIntensity = m.aoMapIntensity; }
+  if (m.emissive && m.emissive.clone) { p.emissive = m.emissive.clone(); p.emissiveIntensity = m.emissiveIntensity || 0; }
+  if (m.transparent) { p.transparent = true; p.opacity = m.opacity; }
+  if (m.side) p.side = m.side;
+  if (m.alphaTest) p.alphaTest = m.alphaTest;
+  if (m.vertexColors) p.vertexColors = true;
+  if (m.flatShading) p.flatShading = true;
+  if (m.envMap) p.envMap = m.envMap;
+  const nm = new THREE.MeshStandardMaterial(p);
+  nm.needsUpdate = true;
+  return nm;
+}
+
+/** 恢复单个网格的原始材质，移除并释放点云代理 */
+export function restoreMeshDisplay(o) {
+  const proxy = o.userData._pointsProxy;
+  if (proxy) {
+    o.remove(proxy);
+    // geometry 与原网格共享，只释放代理自己的 PointsMaterial
+    proxy.material.dispose();
+    o.userData._pointsProxy = null;
+  }
+  if (o.userData.origMat) {
+    const orig = o.userData.origMat;
+    // 当前材质若是切换时创建的临时代质（线框材质等），释放它，避免 wireframe↔points 互切泄漏
+    if (o.material && o.material !== orig) o.material.dispose?.();
+    orig.visible = true;
+    o.material = orig;
+    delete o.userData.origMat;
+  }
+}
+
+/**
+ * 把单个网格切换到指定显示模式（solid/wireframe/points）。
+ * 每次先 restore，保证 wireframe↔points 互切不泄漏上一份临时材质；
+ * points 模式用 Points 代理（作为子节点继承变换）渲染顶点并隐藏实体面。
+ */
+export function setMeshDisplayMode(o, mode, pointSize = 0.03) {
+  restoreMeshDisplay(o);
+  if (mode === 'wireframe') {
+    o.userData.origMat = o.material;
+    o.material = new THREE.MeshBasicMaterial({ color: 0x6ea8ff, wireframe: true });
+  } else if (mode === 'points') {
+    o.userData.origMat = o.material;
+    o.material.visible = false;
+    const proxy = new THREE.Points(
+      o.geometry,
+      new THREE.PointsMaterial({ color: 0x6ea8ff, size: pointSize, sizeAttenuation: true })
+    );
+    o.userData._pointsProxy = proxy;
+    o.add(proxy);
+  }
+}
+
+/**
  * 创建默认工厂模型（建筑、储罐、管道、传送带、树木、围栏等）。
  * 供 SceneRuntime 和设置页实时预览共用。
  */
 export function createFactoryModel() {
   const g = new THREE.Group();
-  const mat = (c, opts = {}) => new THREE.MeshStandardMaterial({ color: c, metalness: opts.metalness ?? 0.3, roughness: opts.roughness ?? 0.55, ...opts });
+  // 相同 (颜色, 参数) 的材质共享实例，避免每个网格一份材质（原实现 178 个网格 = 178 个材质）
+  const matCache = new Map();
+  const mat = (c, opts = {}) => {
+    const key = `${c}|${JSON.stringify(opts)}`;
+    let material = matCache.get(key);
+    if (!material) {
+      material = new THREE.MeshStandardMaterial({ color: c, metalness: opts.metalness ?? 0.3, roughness: opts.roughness ?? 0.55, ...opts });
+      matCache.set(key, material);
+    }
+    return material;
+  };
   const box = (w, h, d, x, y, z, c, opts) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c, opts));
     m.position.set(x, y + h / 2, z);
@@ -111,14 +218,17 @@ export function createFactoryModel() {
   g.userData.conveyor = conv;
 
   // Crates on conveyor
+  const crates = [];
   for (let i = 0; i < 5; i++) {
     const crate = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.55, 0.65), mat(i % 2 ? 0xc4956a : 0xb8865a, { roughness: 0.8 }));
     crate.position.set(-4.5 + i * 2, 0.63, 0);
     crate.castShadow = crate.receiveShadow = true;
     crate.userData.crate = true;
     crate.userData.crateOffset = i * 2;
+    crates.push(crate);
     g.add(crate);
   }
+  g.userData.crates = crates;
 
   // Warning lights
   for (let i = 0; i < 6; i++) {
@@ -133,9 +243,9 @@ export function createFactoryModel() {
   for (let x = -7; x <= 7; x += 2.8) {
     for (const z of [-4.8, 4.8]) {
       const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.5, 6), mat(0x5a4028, { roughness: 0.9 }));
-      tr.position.set(x, 0.05, z); tr.castShadow = true;
+      tr.position.set(x, 0.05, z); tr.castShadow = true; tr.receiveShadow = true;
       const l = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), mat(0x2b8060, { roughness: 0.8 }));
-      l.position.set(x, 0.6, z); l.castShadow = true;
+      l.position.set(x, 0.6, z); l.castShadow = true; l.receiveShadow = true;
       g.add(tr, l);
     }
   }
@@ -208,6 +318,7 @@ export class SceneRuntime {
 
     // Press bounce spring (3D space squash & stretch)
     this._press = { current: 0, target: 0, velocity: 0 };
+    this._pressActive = false;
     this._baseModelScale = new THREE.Vector3(1, 1, 1);
     this._baseCameraZoom = 1;
     this._lastFrameTime = performance.now();
@@ -280,17 +391,9 @@ export class SceneRuntime {
     this.rim.position.set(7, 4, -3);
     this.scene.add(this.hemi, this.sun, this.rim, this.sun.target);
 
-    // Grid & ground (纯黑小地面，与背景融合，只保留网格线)
+    // 参考网格（默认关闭，可在设置中心“显示网格”打开）；不添加任何地面平面，模型直接置于背景中
     this.grid = new THREE.GridHelper(26, 26, 0x3a6ea5, 0x1a3a5c);
     this.scene.add(this.grid);
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(24, 18),
-      new THREE.MeshStandardMaterial({ color: 0x080c14, roughness: 0.95, metalness: 0.05 })
-    );
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.01;
-    ground.receiveShadow = true;
-    this.scene.add(ground);
 
     // Default model
     this.model = this._factory();
@@ -394,14 +497,26 @@ export class SceneRuntime {
     this.camera.updateProjectionMatrix();
     this.control.minDistance = Math.max(0.1, distance * 0.12);
     this.control.maxDistance = Math.max(40, distance * 5);
-    this.grid.scale.setScalar(Math.max(1, Math.max(size.x, size.y, size.z) / 22 * 1.25));
-    this.grid.position.set(center.x, bounds.min.y - 0.04, center.z);
+    const gridPlace = computeGridPlacement(size, center, bounds.min.y);
+    this.grid.scale.setScalar(gridPlace.scale);
+    this.grid.position.set(...gridPlace.grid);
     const maxDim = Math.max(size.x, size.y, size.z);
     this._particles.position.set(center.x, bounds.min.y, center.z);
     this._particles.scale.setScalar(Math.max(1, maxDim / 20));
     this._pMat.size = 0.04 * Math.max(1, maxDim / 20);
-    // 调整太阳阴影相机范围以覆盖整个模型
-    const shadowRange = Math.max(size.x, size.z) * 0.8 + 4;
+    this._setupSunForBounds(size, center, maxDim);
+    this.control.update();
+  }
+
+  /**
+   * 按模型包围盒设置平行光位置与正交阴影相机范围。
+   * PCFSoftShadowMap 不使用 shadow.radius（仅 VSM 生效），这里用阴影范围等效控制柔化：
+   * shadowSoftness 越大 → 同分辨率贴图覆盖的世界范围越大 → 每 texel 越宽 → PCF 边缘过渡越柔。
+   */
+  _setupSunForBounds(size, center, maxDim, reposition = true) {
+    const softness = this._sceneConfig?.shadowSoftness ?? 0.6;
+    const softPad = 1 + Math.max(0, softness) * 0.18;
+    const shadowRange = (Math.max(size.x, size.z) * 0.8 + 4) * softPad;
     const sc = this.sun.shadow.camera;
     sc.left = -shadowRange;
     sc.right = shadowRange;
@@ -410,20 +525,27 @@ export class SceneRuntime {
     sc.near = 0.5;
     sc.far = Math.max(100, maxDim * 6);
     sc.updateProjectionMatrix();
-    const sunDist = Math.max(15, maxDim * 1.5);
-    this.sun.position.copy(center).add(new THREE.Vector3(-0.4, 0.85, 0.5).normalize().multiplyScalar(sunDist));
+    // reposition=false 时只刷新阴影范围（配置滑块拖动），不移动太阳，避免覆盖手动/循环位置
+    if (reposition) {
+      const sunDist = Math.max(15, maxDim * 1.5);
+      this.sun.position.copy(center).add(new THREE.Vector3(-0.4, 0.85, 0.5).normalize().multiplyScalar(sunDist));
+    }
     this.sun.target.position.copy(center);
     this.sun.target.updateMatrixWorld();
     this.sun.shadow.needsUpdate = true;
-    this.control.update();
   }
 
   _resize() {
     const r = this._root.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return;
     this.renderer.setSize(r.width, r.height);
     this.camera.aspect = r.width / r.height;
     this.camera.updateProjectionMatrix();
-    this._fit(this.model);
+    // 仅首次挂载按真实宽高比自动取景；之后的尺寸变化（切换导航、缩放窗口）保留用户当前视角
+    if (!this._initialFitDone) {
+      this._fit(this.model);
+      this._initialFitDone = true;
+    }
   }
 
   // ── Public API ──────────────────────────────────────────────────
@@ -444,6 +566,14 @@ export class SceneRuntime {
       this._baseCameraZoom = this.camera.zoom;
       this._press.velocity = 0;
     }
+  }
+
+  /** 切换模型时清空弹簧，避免旧模型残留形变带到新模型入场末尾 */
+  _resetPress() {
+    this._press.current = 0;
+    this._press.target = 0;
+    this._press.velocity = 0;
+    this._pressActive = false;
   }
 
   setView(preset) {
@@ -496,27 +626,30 @@ export class SceneRuntime {
     return { meshes, tris: Math.round(tris), materials: mats.size };
   }
 
-  setDisplayMode(mode) {
-    this._displayMode = mode;
-    const m = this.model;
-    if (!m) return;
-    m.traverse((o) => {
-      if (o.isMesh) {
-        if (mode === 'wireframe') {
-          if (!o.userData.origMat) o.userData.origMat = o.material;
-          o.material = new THREE.MeshBasicMaterial({ color: 0x6EA8FF, wireframe: true });
-        } else if (mode === 'points') {
-          if (!o.userData.origMat) o.userData.origMat = o.material;
-          o.material = new THREE.PointsMaterial({ color: 0x6EA8FF, size: 0.03, sizeAttenuation: true });
-        } else {
-          if (o.userData.origMat) {
-            o.material = o.userData.origMat;
-            delete o.userData.origMat;
-          }
-        }
-      }
+  /** 恢复单个网格的原始材质并移除点云代理（对称清理，避免临时材质泄漏） */
+  _restoreMeshDisplay(o) {
+    restoreMeshDisplay(o);
+  }
+
+  /** 把当前显示模式应用到整棵模型树 */
+  _applyDisplayMode(root) {
+    if (!root) return;
+    const mode = this._displayMode;
+    let pointSize = 0.03;
+    if (mode === 'points') {
+      const box = new THREE.Box3().setFromObject(root);
+      const size = box.getSize(new THREE.Vector3());
+      pointSize = Math.max(size.x, size.y, size.z) * 0.002 || 0.03;
+    }
+    root.traverse((o) => {
+      if (o.isMesh) setMeshDisplayMode(o, mode, pointSize);
     });
     this._needsRender = true;
+  }
+
+  setDisplayMode(mode) {
+    this._displayMode = mode;
+    this._applyDisplayMode(this.model);
   }
 
   _buildTree(obj) {
@@ -602,7 +735,6 @@ export class SceneRuntime {
     r.hemi.intensity = env[3] * sceneConfig.ambientIntensity;
     r.sun.color.setHex(env[4]);
     r.sun.intensity = env[5] * sceneConfig.sunIntensity;
-    r.sun.shadow.radius = sceneConfig.shadowSoftness;
     r.rim.color.setHex(env[6]);
     r.rim.intensity = env[7];
     r.camera.fov = sceneConfig.fov;
@@ -614,12 +746,20 @@ export class SceneRuntime {
     r.control.autoRotateSpeed = sceneConfig.rotationSpeed * (sceneConfig.display === 'showcase' ? 1.65 : 1);
     r.control.dampingFactor = sceneConfig.display === 'showcase' ? 0.085 : 0.05;
     r.grid.visible = sceneConfig.grid;
+    // 场景不再包含地面平面，模型直接置于背景中；网格线由“显示网格”单独控制
     r.renderer.shadowMap.enabled = sceneConfig.shadows;
     const shadowSize = { low: 512, medium: 1024, high: 2048 }[sceneConfig.shadowQuality] || 1024;
     r.sun.shadow.mapSize.set(shadowSize, shadowSize);
     r.sun.shadow.needsUpdate = true;
     r.renderer.toneMappingExposure = sceneConfig.exposure;
     r.renderer.setPixelRatio(sceneConfig.dpr === 'auto' ? Math.min(devicePixelRatio, 2) : Number(sceneConfig.dpr));
+    // 阴影柔化等参数变化时，按当前模型重算阴影相机范围（不重置用户相机）
+    if (this.model) {
+      const b = new THREE.Box3().setFromObject(this.model);
+      const sz = b.getSize(new THREE.Vector3());
+      const ct = b.getCenter(new THREE.Vector3());
+      this._setupSunForBounds(sz, ct, Math.max(sz.x, sz.y, sz.z), false);
+    }
     this._needsRender = true;
   }
 
@@ -645,30 +785,10 @@ export class SceneRuntime {
           o.castShadow = true;
           o.receiveShadow = true;
           o.frustumCulled = false;
-          const toStandard = (m) => {
-            if (!m) return m;
-            if (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial) return m;
-            const p = {
-              color: (m.color && m.color.clone) ? m.color.clone() : new THREE.Color(0xffffff),
-              roughness: 0.65, metalness: 0.15,
-            };
-            if (m.map) p.map = m.map;
-            if (m.normalMap) p.normalMap = m.normalMap;
-            if (m.roughnessMap) p.roughnessMap = m.roughnessMap;
-            if (m.metalnessMap) p.metalnessMap = m.metalnessMap;
-            if (m.aoMap) p.aoMap = m.aoMap;
-            if (m.emissive && m.emissive.clone) { p.emissive = m.emissive.clone(); p.emissiveIntensity = m.emissiveIntensity || 0; }
-            if (m.transparent) { p.transparent = true; p.opacity = m.opacity; }
-            if (m.side) p.side = m.side;
-            if (m.alphaTest) p.alphaTest = m.alphaTest;
-            const nm = new THREE.MeshStandardMaterial(p);
-            nm.needsUpdate = true;
-            return nm;
-          };
           if (Array.isArray(o.material)) {
-            o.material = o.material.map(toStandard);
+            o.material = o.material.map(convertMaterialToStandard);
           } else {
-            o.material = toStandard(o.material);
+            o.material = convertMaterialToStandard(o.material);
           }
         }
       });
@@ -697,6 +817,8 @@ export class SceneRuntime {
       this.model.position.y = this.model.userData.tPos.y - 1.8;
       this.model.rotation.y = this.model.userData.tRot.y - 2.0;
       this.entranceStart = performance.now();
+      this._resetPress();
+      if (this._displayMode !== 'solid') this._applyDisplayMode(this.model);
       this._cb.onModelLoaded?.(file);
       if (!silent) this._cb.onNotice?.(`${file.name} 已载入`);
     } catch {
@@ -726,6 +848,8 @@ export class SceneRuntime {
     this.model.position.y = this.model.userData.tPos.y - 1.8;
     this.model.rotation.y = this.model.userData.tRot.y - 2.0;
     this.entranceStart = performance.now();
+    this._resetPress();
+    if (this._displayMode !== 'solid') this._applyDisplayMode(this.model);
   }
 
   // ── Event handlers ──────────────────────────────────────────────
@@ -802,11 +926,11 @@ export class SceneRuntime {
     const convRef = this.model?.userData?.conveyor;
     if (convRef) {
       const t = performance.now() * 0.001;
-      convRef.children.forEach((c, i) => { if (c.userData.roller) c.rotation.x = t * 2 + i * 0.3; });
-      this.scene.traverse((o) => {
-        if (o.userData.crate) {
-          o.position.x = -4.5 + ((t * 0.4 + (o.userData.crateOffset || 0)) % 9);
-        }
+      convRef.userData.rollers.forEach((c, i) => { c.rotation.x = t * 2 + i * 0.3; });
+      // 货箱在创建时已收集，避免每帧 scene.traverse 全树
+      (this.model.userData.crates || []).forEach((o) => {
+        // 环长取 10 = 货箱数 5 × 间距 2，保证绕回处相邻货箱也是等距 2，避免末端挤堆
+        o.position.x = -4.5 + ((t * 0.4 + (o.userData.crateOffset || 0)) % 10);
       });
     }
 
@@ -862,27 +986,32 @@ export class SceneRuntime {
     }
 
     // Press bounce spring (3D space squash & stretch)
-    // 只在入场动画结束后应用，避免冲突
+    // 只在入场动画结束后应用，避免冲突；收敛后停止写 model.scale，避免屏蔽动画自身的缩放轨道
     if (this.entranceStart <= 0 && this.model) {
       const p = this._press;
-      // Spring physics: stiffness 280, damping 20 → 阻尼比 0.60，快速回弹+一次过冲
-      const stiffness = 280, damping = 20, mass = 1;
-      const force = -stiffness * (p.current - p.target) - damping * p.velocity;
-      p.velocity += (force / mass) * dt;
-      p.current += p.velocity * dt;
-      // Clamp to prevent extreme values
-      p.current = Math.max(-0.15, Math.min(1.15, p.current));
-
-      // Apply: camera zoom in (space compression) + model scale down
-      const pressVal = p.current;
-      if (Math.abs(pressVal) > 0.001) {
-        // 基于按压开始时的基础 zoom，避免覆盖用户手动缩放
-        this.camera.zoom = this._baseCameraZoom * (1 + pressVal * 0.4);
+      const wasActive = this._pressActive;
+      stepPressSpring(p, dt);
+      const active = p.target !== 0 || Math.abs(p.current) > 0.001 || Math.abs(p.velocity) > 0.01;
+      if (active) {
+        const pressVal = p.current;
+        if (Math.abs(pressVal) > 0.001) {
+          // 基于按压开始时的基础 zoom，避免覆盖用户手动缩放
+          this.camera.zoom = this._baseCameraZoom * (1 + pressVal * 0.4);
+          this.camera.updateProjectionMatrix();
+        }
+        const scaleFactor = 1 - pressVal * 0.18;
+        const ts = this.model.userData.tScale || this._baseModelScale;
+        this.model.scale.set(ts.x * scaleFactor, ts.y * scaleFactor, ts.z * scaleFactor);
+      } else if (wasActive) {
+        // 弹簧刚收敛：复位一次相机与模型缩放，之后交还给模型自身/动画
+        this.camera.zoom = this._baseCameraZoom;
         this.camera.updateProjectionMatrix();
+        const ts = this.model.userData.tScale;
+        if (ts) this.model.scale.copy(ts);
+        p.current = 0;
+        p.velocity = 0;
       }
-      const scaleFactor = 1 - pressVal * 0.18;
-      const ts = this.model.userData.tScale || this._baseModelScale;
-      this.model.scale.set(ts.x * scaleFactor, ts.y * scaleFactor, ts.z * scaleFactor);
+      this._pressActive = active;
     }
 
     // Sun cycle
@@ -910,26 +1039,28 @@ export class SceneRuntime {
         this.rim.intensity = 0.4;
       } else {
         this.sun.position.set(z * 15, Math.max(0.5, e * 18), z * 8);
+        const sunGain = sc.sunIntensity ?? 1;
+        const ambGain = sc.ambientIntensity ?? 1;
         if (e > 0.3) {
           const t = (e - 0.3) / 0.7;
           this.sun.color.setRGB(1, 0.93 + t * 0.07, 0.8 + t * 0.2);
-          this.sun.intensity = 0.6 + e * 0.9;
+          this.sun.intensity = (0.6 + e * 0.9) * sunGain;
           this.hemi.color.setHex(0x88bbff);
           this.hemi.groundColor.setHex(0x1a2a4a);
-          this.hemi.intensity = 0.6 + e * 0.3;
+          this.hemi.intensity = (0.6 + e * 0.3) * ambGain;
           this.rim.intensity = 0.2;
         } else if (e > 0) {
           this.sun.color.setRGB(1, 0.4 + e * 1.7, 0.2 + e * 2);
-          this.sun.intensity = 0.2 + e * 1.3;
+          this.sun.intensity = (0.2 + e * 1.3) * sunGain;
           this.hemi.color.setHex(0xff9966);
           this.hemi.groundColor.setHex(0x2a1a1a);
-          this.hemi.intensity = 0.3 + e;
+          this.hemi.intensity = (0.3 + e) * ambGain;
           this.rim.intensity = 0.3;
         } else {
           this.sun.intensity = 0;
           this.hemi.color.setHex(0x1a2a4a);
           this.hemi.groundColor.setHex(0x0a0a1a);
-          this.hemi.intensity = 0.15;
+          this.hemi.intensity = 0.15 * ambGain;
           this.rim.color.setHex(0x6688aa);
           this.rim.intensity = 0.5;
         }
@@ -996,7 +1127,7 @@ export class SceneRuntime {
       sun: rt.sun,
       rim: rt.rim,
       THREE: rt.THREE,
-      fit: (obj) => rt._fit(obj),
+      fit: (obj) => rt.fit(obj),
       getModel: () => rt.getModel(),
       setView: (p) => rt.setView(p),
       screenshot: () => rt.screenshot(),
@@ -1036,7 +1167,13 @@ export class SceneRuntime {
     this._root.removeEventListener('drop', this._onDrop);
     this._observer?.disconnect();
     cancelAnimationFrame(this._frame);
+    if (this.exitingModel) {
+      this._disposeObject(this.exitingModel);
+      this.exitingModel = null;
+    }
     this._disposeObject(this.model);
+    this._pGeo?.dispose();
+    this._pMat?.dispose();
     this.renderer.dispose();
     this._root.replaceChildren();
     // Clear globals
