@@ -33,7 +33,7 @@
   "build": {
     "appId": "com.factory.web3d.workbench",
     "productName": "工厂 Web3D 工作台",
-    "buildVersion": "1.1.0.0",
+    "buildVersion": "1.2.0.0",
     "electronDist": "node_modules/electron/dist",
     "copyright": "Copyright © 2026 Youhui Wen",
     "icon": "build/app-icon.ico",
