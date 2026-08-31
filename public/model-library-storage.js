@@ -31,6 +31,8 @@ async function deleteModel(name) {
 }
 
 window.factoryModelStorage = {
+  // 供 ES 模块（ModelLoader.loadModelByName / 设置页实时预览）按名取回模型文件
+  getModel,
   waitForSave(name) { return pendingSaves.get(name) || Promise.resolve(); },
   async listModels() {
     try {

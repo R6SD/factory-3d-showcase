@@ -95,10 +95,10 @@ describe('StereoPipeline', () => {
     expect(r.renderCalls).toBe(2);
   });
 
-  it('setSize / setEyeSeparation 不抛错', () => {
+  it('setSize 不抛错', () => {
     const p = new StereoPipeline(makeRenderer());
     expect(() => p.setSize(1024, 768)).not.toThrow();
     p.setMode('sbs');
-    expect(() => { p.setSize(1024, 768); p.setEyeSeparation(0.064); }).not.toThrow();
+    expect(() => { p.setSize(1024, 768); }).not.toThrow();
   });
 });

@@ -60,7 +60,9 @@ function installSettingsTitleEditor() {
   const settings = document.querySelector('.settings');
   const brandTab = [...document.querySelectorAll('.settings nav button')].find((button) => button.textContent.includes('品牌') || button.textContent.includes('Brand'));
   const form = settings?.querySelector('.form');
-  if (!settings || !brandTab?.classList.contains('active') || !form || form.querySelector('.viewer-title-settings')) return false;
+  if (!settings || !brandTab?.classList.contains('active') || !form) return false;
+  // 已安装视为完成（返回 true），与 installBrandIconEditor 保持一致，保证观察器能正常自断开
+  if (form.querySelector('.viewer-title-settings')) return true;
   const group = document.createElement('section');
   group.className = 'viewer-title-settings';
   group.innerHTML = '<h3>工作台居中标题</h3><p>修改后会立即应用到三维工作台，并保存在当前浏览器。</p>';

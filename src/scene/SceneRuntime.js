@@ -53,8 +53,8 @@ export function convertMaterialToStandard(m) {
   if (m.isMeshStandardMaterial || m.isMeshPhysicalMaterial) return m;
   const p = {
     color: (m.color && m.color.clone) ? m.color.clone() : new THREE.Color(0xffffff),
-    roughness: 0.65,
-    metalness: 0.15,
+    roughness: 0.58,
+    metalness: 0.22,
   };
   if (m.map) p.map = m.map;
   if (m.normalMap) { p.normalMap = m.normalMap; p.normalScale = m.normalScale; }
@@ -302,6 +302,8 @@ export class SceneRuntime {
     // Render loop
     this._frame = null;
     this._needsRender = true;
+    // 模型导入请求序号：连续快速导入时只提交最后一次请求，避免“先请求后返回”覆盖新模型
+    this._importSeq = 0;
 
     // Particles
     this._pCount = 180;
@@ -321,9 +323,6 @@ export class SceneRuntime {
     this._lastPerfAt = performance.now();
     this._lastCalls = 0;
     this._lastTris = 0;
-
-    // Sun cycle cache
-    this._sunCache = { sec: -1, h: 0, e: 0, z: 0 };
 
     // Press bounce spring (3D space squash & stretch)
     this._press = { current: 0, target: 0, velocity: 0 };
@@ -366,6 +365,8 @@ export class SceneRuntime {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // ACES 电影级色调映射：压缩高光、拉开明暗对比，增强体积与材质层次
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     // 阴影只取决于模型与光源的相对关系，静态查看/轨道旋转/视差时无需每帧重算：
     // 关闭自动更新，改由帧循环按 shouldUpdateShadow 在确有动画或显式标脏时更新一次
     this.renderer.shadowMap.autoUpdate = false;
@@ -382,11 +383,12 @@ export class SceneRuntime {
       e.preventDefault();
       ctxLost.style.display = 'grid';
       cancelAnimationFrame(this._frame);
+      this._frame = null;
     });
     this.renderer.domElement.addEventListener('webglcontextrestored', () => {
       ctxLost.style.display = 'none';
       this._needsRender = true;
-      this._frame = requestAnimationFrame(() => this._loop());
+      this._scheduleFrame();
     });
 
     // Scene & camera
@@ -670,11 +672,6 @@ export class SceneRuntime {
     return { meshes, tris: Math.round(tris), materials: mats.size };
   }
 
-  /** 恢复单个网格的原始材质并移除点云代理（对称清理，避免临时材质泄漏） */
-  _restoreMeshDisplay(o) {
-    restoreMeshDisplay(o);
-  }
-
   /** 把当前显示模式应用到整棵模型树 */
   _applyDisplayMode(root) {
     if (!root) return;
@@ -694,13 +691,6 @@ export class SceneRuntime {
   setDisplayMode(mode) {
     this._displayMode = mode;
     this._applyDisplayMode(this.model);
-  }
-
-  /** 切换裸眼 3D / 立体模式（也可由 updateConfig 统一驱动） */
-  setStereoMode(mode) {
-    this.stereo?.setMode(mode);
-    this._parallax.enabled = !!mode && mode !== 'off';
-    this._needsRender = true;
   }
 
   getStereoMode() {
@@ -743,43 +733,13 @@ export class SceneRuntime {
     this._needsRender = true;
   }
 
-  // ── Narrow interface (for public scripts, avoids leaking Three.js internals) ──
-
-  /** 返回相机朝向的单位向量 */
-  getCameraDirection() {
-    return this.camera.getWorldDirection(new THREE.Vector3());
-  }
-
-  /** 将模型局部坐标投影到屏幕坐标 [0,1] */
-  projectPoint(local) {
-    const m = this.model;
-    if (!m) return null;
-    const world = m.localToWorld(new THREE.Vector3(local.x, local.y, local.z));
-    const projected = world.clone().project(this.camera);
-    return { x: (projected.x + 1) / 2, y: (-projected.y + 1) / 2, z: projected.z };
-  }
-
-  /** 从屏幕坐标射线检测模型，返回交点或 null */
-  raycast(clientX, clientY) {
-    const m = this.model;
-    if (!m) return null;
-    const bounds = this._root.getBoundingClientRect();
-    const pointer = new THREE.Vector2(
-      (clientX - bounds.left) / bounds.width * 2 - 1,
-      -(clientY - bounds.top) / bounds.height * 2 + 1
-    );
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(pointer, this.camera);
-    return raycaster.intersectObject(m, true)[0] || null;
-  }
-
   // ── Config application ──────────────────────────────────────────
 
   updateConfig(sceneConfig) {
     this._sceneConfig = sceneConfig;
     const r = this;
     const env = {
-      factory: [0x000000, 0xa6c8ff, 0x071128, 2.2, 0xd8e8ff, 3, 0x4488ff, 22],
+      factory: [0x000000, 0xa6c8ff, 0x071128, 1.7, 0xeaf2ff, 3.3, 0x6aa8ff, 30],
       studio: [0x172440, 0xffffff, 0x4b5561, 3.1, 0xffffff, 3.8, 0x9fc0ff, 13],
       dusk: [0x251625, 0x8b87c9, 0x241625, 1.9, 0xffa96d, 3.3, 0xe266b8, 18],
     }[sceneConfig.environment];
@@ -829,17 +789,24 @@ export class SceneRuntime {
 
   async _importFile(file, silent) {
     if (!file) return;
-    if (this.mixer) { this.mixer.stopAllAction(); this.mixer = null; }
     if (file.size > 200 * 1024 * 1024) {
       this._cb.onNotice?.('文件超过 200MB 限制');
       return;
     }
+    // 每次导入自增序号：连续快速导入 A、B 时，只提交最后一次请求（B），先返回的 A 作废
+    const seq = ++this._importSeq;
     this._cb.onLoading?.(true);
     if (!silent) this._cb.onNotice?.(`正在加载 ${file.name}…`);
-    let next;
     try {
       const loaded = await loadModelFile(file);
-      next = loaded.object;
+      // 等待解析期间又发起了更新的导入（或切回默认模型）：本次结果已过期，释放 GPU 资源后直接放弃
+      if (seq !== this._importSeq) {
+        this._disposeObject(loaded.object);
+        return;
+      }
+      const next = loaded.object;
+      // 确认提交时才停掉旧动画，避免加载失败/被覆盖时把当前模型的动画误停
+      if (this.mixer) { this.mixer.stopAllAction(); this.mixer = null; }
       this.mixer = loaded.mixer;
       // 导入模型：统一启用阴影 + 转换不支持光照的材质
       next.traverse((o) => {
@@ -884,13 +851,20 @@ export class SceneRuntime {
       this._cb.onModelLoaded?.(file);
       if (!silent) this._cb.onNotice?.(`${file.name} 已载入`);
     } catch {
-      this._cb.onNotice?.('模型载入失败：请检查格式、资源引用和文件完整性');
+      // 过期请求的 reject 不再提示；只有最新一次导入失败才通知用户
+      if (seq === this._importSeq) {
+        this._cb.onNotice?.('模型载入失败：请检查格式、资源引用和文件完整性');
+      }
     } finally {
-      this._cb.onLoading?.(false);
+      // 加载指示也只由最新请求收尾，避免过期请求提前关掉仍在进行的加载动画
+      if (seq === this._importSeq) this._cb.onLoading?.(false);
     }
   }
 
   _showDefault() {
+    // 切回默认模型同样使在途的异步导入作废，防止其晚返回后覆盖默认场景
+    this._importSeq++;
+    this._cb.onLoading?.(false); // 作废在途导入时一并关闭它可能开启的加载遮罩，避免卡住
     if (this.model) {
       this.exitingModel = this.model;
       this.exitingModel.userData.exitStart = performance.now();
@@ -982,10 +956,23 @@ export class SceneRuntime {
   _onVis() {
     if (document.hidden) {
       cancelAnimationFrame(this._frame);
+      this._frame = null;
     } else {
       this._needsRender = true;
-      this._frame = requestAnimationFrame(() => this._loop());
+      this._scheduleFrame();
     }
+  }
+
+  /**
+   * 幂等调度下一帧：先撤销在途帧再排新帧。
+   * 主循环自调度、上下文恢复、页面重新可见都走这里，避免出现两条并行 RAF 主循环。
+   */
+  _scheduleFrame() {
+    if (this._frame) cancelAnimationFrame(this._frame);
+    this._frame = requestAnimationFrame(() => {
+      this._frame = null;
+      this._loop();
+    });
   }
 
   // ── Render loop ─────────────────────────────────────────────────
@@ -1097,57 +1084,12 @@ export class SceneRuntime {
       this._pressActive = active;
     }
 
-    // Sun cycle
-    const d0 = new Date();
-    const sec0 = d0.getSeconds();
-    if (sec0 !== this._sunCache.sec) {
-      this._sunCache.sec = sec0;
-      this._sunCache.h = d0.getHours() + d0.getMinutes() / 60 + sec0 / 3600;
-      const a = (this._sunCache.h - 6) / 12 * Math.PI;
-      this._sunCache.e = Math.sin(a);
-      this._sunCache.z = Math.cos(a);
-    }
-    const e = this._sunCache.e, z = this._sunCache.z;
-    if (sc.sunCycle !== false) {
-      if (sc.sunManual) {
-        const az = sc.sunAzimuth * Math.PI / 180;
-        const el = sc.sunElevation * Math.PI / 180;
-        const r = 18;
-        this.sun.position.set(Math.cos(el) * Math.sin(az) * r, Math.sin(el) * r, Math.cos(el) * Math.cos(az) * r);
-        this.sun.color.setRGB(1, 0.95, 0.85);
-        this.sun.intensity = sc.sunIntensity * 1.2;
-        this.hemi.color.setHex(0x88bbff);
-        this.hemi.groundColor.setHex(0x1a2a4a);
-        this.hemi.intensity = 0.7 * sc.ambientIntensity;
-        this.rim.intensity = 0.4;
-      } else {
-        this.sun.position.set(z * 15, Math.max(0.5, e * 18), z * 8);
-        const sunGain = sc.sunIntensity ?? 1;
-        const ambGain = sc.ambientIntensity ?? 1;
-        if (e > 0.3) {
-          const t = (e - 0.3) / 0.7;
-          this.sun.color.setRGB(1, 0.93 + t * 0.07, 0.8 + t * 0.2);
-          this.sun.intensity = (0.6 + e * 0.9) * sunGain;
-          this.hemi.color.setHex(0x88bbff);
-          this.hemi.groundColor.setHex(0x1a2a4a);
-          this.hemi.intensity = (0.6 + e * 0.3) * ambGain;
-          this.rim.intensity = 0.2;
-        } else if (e > 0) {
-          this.sun.color.setRGB(1, 0.4 + e * 1.7, 0.2 + e * 2);
-          this.sun.intensity = (0.2 + e * 1.3) * sunGain;
-          this.hemi.color.setHex(0xff9966);
-          this.hemi.groundColor.setHex(0x2a1a1a);
-          this.hemi.intensity = (0.3 + e) * ambGain;
-          this.rim.intensity = 0.3;
-        } else {
-          this.sun.intensity = 0;
-          this.hemi.color.setHex(0x1a2a4a);
-          this.hemi.groundColor.setHex(0x0a0a1a);
-          this.hemi.intensity = 0.15 * ambGain;
-          this.rim.color.setHex(0x6688aa);
-          this.rim.intensity = 0.5;
-        }
-      }
+    // Manual sun position (driven by the 太阳环绕 dial; no time-based day/night cycle)
+    {
+      const az = (sc.sunAzimuth ?? 45) * Math.PI / 180;
+      const el = (sc.sunElevation ?? 60) * Math.PI / 180;
+      const r = 18;
+      this.sun.position.set(Math.cos(el) * Math.sin(az) * r, Math.sin(el) * r, Math.cos(el) * Math.cos(az) * r);
     }
 
     // Carousel
@@ -1215,7 +1157,7 @@ export class SceneRuntime {
     // 回到按需渲染，避免“视差开关常开”导致的逐帧空转
     const dualEye = this.stereo?.isDualEye ?? false;
     const pxSettled = !px.enabled || (!px.auto && parallaxSettled(px.curX, px.curY, px.targetX, px.targetY));
-    const hasAnim = this.mixer || this.entranceStart > 0 || this.exitingModel || sc.sunCycle !== false || (!envPaused && this.model?.userData?.conveyor);
+    const hasAnim = this.mixer || this.entranceStart > 0 || this.exitingModel || (!envPaused && this.model?.userData?.conveyor);
     const doRender = shouldRenderFrame({
       needs: this._needsRender, hasAnim, dualEye,
       parallaxEnabled: px.enabled, autoSway: px.auto, settled: pxSettled,
@@ -1237,7 +1179,7 @@ export class SceneRuntime {
     }
     // 还原相机位置：离轴偏移只作用于本帧渲染，不进入 OrbitControls 的轨道状态
     if (parallaxApplied) this.camera.position.copy(this._tmpBasePos);
-    this._frame = requestAnimationFrame(() => this._loop());
+    this._scheduleFrame();
   }
 
   // ── Runtime exposure (for public scripts) ───────────────────────
@@ -1265,24 +1207,8 @@ export class SceneRuntime {
       getModelTree: () => rt.getModelTree(),
       focusNode: (u) => rt.focusNode(u),
       toggleNodeVisible: (u) => rt.toggleNodeVisible(u),
-      // Narrow interface (preferred for new code)
-      getCameraDirection: () => rt.getCameraDirection(),
-      projectPoint: (local) => rt.projectPoint(local),
-      raycast: (x, y) => rt.raycast(x, y),
       pressBounce: (active) => rt.pressBounce(active),
-      setStereoMode: (m) => rt.setStereoMode(m),
-      getStereoMode: () => rt.getStereoMode(),
     };
-    window.__factorySetView = (p) => rt.setView(p);
-    window.__factoryScreenshot = () => rt.screenshot();
-    window.__factoryGetModelInfo = () => rt.getModelInfo();
-    window.__factorySetDisplayMode = (m) => rt.setDisplayMode(m);
-    window.__factoryGetDisplayMode = () => rt._displayMode;
-    window.__factoryGetFps = () => rt.getFps();
-    window.__factoryGetPerf = () => rt.getPerf();
-    window.__factoryGetModelTree = () => rt.getModelTree();
-    window.__factoryFocusNode = (u) => rt.focusNode(u);
-    window.__factoryToggleNodeVisible = (u) => rt.toggleNodeVisible(u);
   }
 
   // ── Cleanup ─────────────────────────────────────────────────────
@@ -1300,6 +1226,7 @@ export class SceneRuntime {
     this.renderer.domElement.removeEventListener('pointerleave', this._onPointerLeave);
     this._observer?.disconnect();
     cancelAnimationFrame(this._frame);
+    this._frame = null;
     if (this.exitingModel) {
       this._disposeObject(this.exitingModel);
       this.exitingModel = null;
@@ -1308,19 +1235,10 @@ export class SceneRuntime {
     this._pGeo?.dispose();
     this._pMat?.dispose();
     this.stereo?.dispose();
+    this.control?.dispose();
     this.renderer.dispose();
     this._root.replaceChildren();
     // Clear globals
     window.__factorySceneRuntime = null;
-    window.__factorySetView = null;
-    window.__factoryScreenshot = null;
-    window.__factoryGetModelInfo = null;
-    window.__factorySetDisplayMode = null;
-    window.__factoryGetDisplayMode = null;
-    window.__factoryGetFps = null;
-    window.__factoryGetPerf = null;
-    window.__factoryGetModelTree = null;
-    window.__factoryFocusNode = null;
-    window.__factoryToggleNodeVisible = null;
   }
 }

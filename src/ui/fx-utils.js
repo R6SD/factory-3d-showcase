@@ -17,12 +17,6 @@ export function easeOutCubic(t) {
   return 1 - Math.pow(1 - x, 3);
 }
 
-/** 指数缓出：更快进入平台期，用于需要“迅速到位”的数值。 */
-export function easeOutExpo(t) {
-  const x = clamp01(t);
-  return x >= 1 ? 1 : 1 - Math.pow(2, -10 * x);
-}
-
 /**
  * 从 from 到 to 的补间值。
  * @param {number} from 起始值

@@ -14,11 +14,10 @@ function memoryStorage(initial = {}) {
 
 describe('scene-config 默认值契约', () => {
   it('锁定关键场景默认值，防止实现与文档/测试漂移', () => {
-    // 这些值曾在“复制式测试”中与真实 defaults 漂移（sunCycle/softness/intensity）
+    // 这些值曾在“复制式测试”中与真实 defaults 漂移（softness/intensity）
     expect(defaults.scene.fov).toBe(35);
     expect(defaults.scene.environment).toBe('factory');
     expect(defaults.scene.grid).toBe(false); // 默认不显示参考网格线（地面保留承接阴影）
-    expect(defaults.scene.sunCycle).toBe(false);
     expect(defaults.scene.shadowSoftness).toBeCloseTo(0.6, 5);
     // 阴影柔化滑块 step=0.2，默认值必须落在步进网格上，否则手柄会被浏览器量化到别的值
     expect(defaults.scene.shadowSoftness / 0.2).toBeCloseTo(Math.round(defaults.scene.shadowSoftness / 0.2), 5);
@@ -53,7 +52,6 @@ describe('loadConfig', () => {
     const cfg = loadConfig(storage);
     expect(cfg.scene.fov).toBe(50);                 // 用户值保留
     expect(cfg.scene.environment).toBe('factory');  // 缺失项补默认
-    expect(cfg.scene.sunCycle).toBe(false);
   });
 
   it('迁移旧版默认标题为新标题（中/英）', () => {

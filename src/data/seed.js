@@ -1,12 +1,13 @@
 /**
  * seed.js — 业务数据默认种子与“实时”推演纯函数。
  *
- * 产能 / 场地 / 人员 / 组织原本写死在 React 组件里，这里沉淀为可持久化、可替换的数据集：
+ * 产能 / 场地 / 人员 / 组织沉淀为可持久化、可替换的数据集：
  * Electron 下由本地后端落盘到 userData/business.json；纯浏览器 dev 下回落 localStorage。
- * 后续接入 MES / IoT / HR 时，只需替换 repository 的数据来源，页面与 selectors 不变。
+ * outputRecords 为逐日、逐人、逐线体的产出明细，是产能看板（月部门总产能/分工段/个人/线体日产能）的唯一数据源，
+ * 后台 /admin 可手工编辑或由 Excel 导入。
  */
 
-export const BUSINESS_VERSION = 1;
+export const BUSINESS_VERSION = 2;
 
 /** 设备状态配色（与界面一致，集中维护） */
 export const DEVICE_COLORS = Object.freeze({
@@ -21,10 +22,76 @@ function clone(v) {
   return JSON.parse(JSON.stringify(v));
 }
 
+/** 人员花名册：dept 部门 / section 工段 / line 线体 / manager 直属上级（姓名） */
+function seedPeople() {
+  return [
+    { id: 'E-1001', name: '王建国', role: '工厂总监', dept: '运营中心', section: '', line: '', site: '厂区 A', manager: '—', status: '在岗' },
+    { id: 'E-1012', name: '张伟', role: '生产经理', dept: '制造一部', section: '', line: '', site: '厂区 A', manager: '王建国', status: '在岗' },
+    { id: 'E-1021', name: '周敏', role: '总装工段长', dept: '制造一部', section: '总装工段', line: '', site: '厂区 A', manager: '张伟', status: '在岗' },
+    { id: 'E-1022', name: '赵磊', role: '总装工', dept: '制造一部', section: '总装工段', line: '总装线 A', site: '厂区 A', manager: '周敏', status: '在岗' },
+    { id: 'E-1023', name: '孙丽', role: '总装工', dept: '制造一部', section: '总装工段', line: '总装线 A', site: '厂区 A', manager: '周敏', status: '在岗' },
+    { id: 'E-1024', name: '钱进', role: '总装工', dept: '制造一部', section: '总装工段', line: '总装线 B', site: '厂区 A', manager: '周敏', status: '休息' },
+    { id: 'E-1025', name: '吴昊', role: '总装工', dept: '制造一部', section: '总装工段', line: '总装线 B', site: '厂区 A', manager: '周敏', status: '在岗' },
+    { id: 'E-1031', name: '李强', role: '机加工段长', dept: '制造一部', section: '机加工段', line: '', site: '厂区 A', manager: '张伟', status: '在岗' },
+    { id: 'E-1032', name: '郑爽', role: '机加工', dept: '制造一部', section: '机加工段', line: '机加线 B', site: '厂区 A', manager: '李强', status: '在岗' },
+    { id: 'E-1033', name: '冯涛', role: '机加工', dept: '制造一部', section: '机加工段', line: '机加线 B', site: '厂区 B', manager: '李强', status: '在岗' },
+    { id: 'E-1038', name: '李敏', role: '质量工程师', dept: '质量部', section: '质检工段', line: '', site: '厂区 A', manager: '王建国', status: '在岗' },
+    { id: 'E-1039', name: '王芳', role: '质检工', dept: '质量部', section: '质检工段', line: '质检线', site: '厂区 A', manager: '李敏', status: '在岗' },
+    { id: 'E-1051', name: '陈浩', role: '设备主管', dept: '设备动力部', section: '设备维保', line: '', site: '厂区 B', manager: '王建国', status: '休息' },
+    { id: 'E-1052', name: '许强', role: '维修工', dept: '设备动力部', section: '设备维保', line: '', site: '厂区 B', manager: '陈浩', status: '在岗' },
+    { id: 'E-1061', name: '马磊', role: '仓管员', dept: '仓储中心', section: '仓储工段', line: '', site: '厂区 A', manager: '王建国', status: '在岗' },
+  ];
+}
+
+/** 确定性字符串哈希 + 伪随机源（同一 日期+工号 永远得到同一产量，避免每次渲染跳动） */
+function hashStr(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+/** 个人日产出基准（件/天，按岗位） */
+const DAILY_BASE = { 总装工: 285, 机加工: 240, 质检工: 340, 总装工段长: 70, 机加工段长: 60 };
+
+/**
+ * 生成当月（1 号至今天）逐日逐人产出明细，跳过周末。
+ * 只有归属工段且有产出基准的人员生成记录。
+ */
+function seedOutputRecords(people, now = new Date()) {
+  const records = [];
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const today = now.getDate();
+  for (let day = 1; day <= today; day++) {
+    const d = new Date(year, month, day);
+    const wd = d.getDay();
+    if (wd === 0 || wd === 6) continue;
+    const date = `${year}-${pad2(month + 1)}-${pad2(day)}`;
+    for (const p of people) {
+      const base = DAILY_BASE[p.role];
+      if (!base) continue;
+      const rng = mulberry32(hashStr(date + p.id));
+      const qty = Math.round(base * (0.85 + rng() * 0.3));
+      records.push({ date, dept: p.dept, section: p.section || '', line: p.line || '', person: p.name, qty });
+    }
+  }
+  return records;
+}
+
 /**
  * 默认业务数据。每次调用返回全新副本，避免多处共享同一份引用。
  */
-export function createSeedBusiness() {
+export function createSeedBusiness(now = new Date()) {
+  const people = seedPeople();
   return {
     version: BUSINESS_VERSION,
     updatedAt: new Date(0).toISOString(),
@@ -63,18 +130,9 @@ export function createSeedBusiness() {
       { id: 'site-b', name: '厂区 B', parent: null, devices: 36, online: 33, people: 61, onDuty: 57, rate: 79 },
       { id: 'warehouse', name: '仓储中心', parent: null, devices: 14, online: 14, people: 22, onDuty: 20, rate: 96 },
     ],
-    people: [
-      { id: 'E-1001', name: '王建国', role: '工厂总监', dept: '运营中心', site: '厂区 A', manager: '—', status: '在岗' },
-      { id: 'E-1012', name: '张伟', role: '生产经理', dept: '制造一部', site: '厂区 A', manager: '王建国', status: '在岗' },
-      { id: 'E-1038', name: '李敏', role: '质量工程师', dept: '质量部', site: '厂区 A', manager: '张伟', status: '在岗' },
-      { id: 'E-1051', name: '陈浩', role: '设备主管', dept: '设备动力部', site: '厂区 B', manager: '王建国', status: '休息' },
-    ],
+    people,
+    outputRecords: seedOutputRecords(people, now),
   };
-}
-
-/** 兼容旧调用：返回种子副本 */
-export function defaultBusiness() {
-  return createSeedBusiness();
 }
 
 const clampNum = (v, min, max) => Math.min(max, Math.max(min, v));
@@ -111,6 +169,23 @@ export function stepCapacity(prev, rng = Math.random) {
   return c;
 }
 
+const PERSON_DEFAULTS = { role: '员工', dept: '未分配', section: '', line: '', site: '', manager: '—', status: '在岗', photo: '', photoHalf: '' };
+
+function normalizePerson(p) {
+  return { ...PERSON_DEFAULTS, ...p };
+}
+
+function normalizeRecord(r) {
+  return {
+    date: String(r.date ?? ''),
+    dept: String(r.dept ?? ''),
+    section: String(r.section ?? ''),
+    line: String(r.line ?? ''),
+    person: String(r.person ?? ''),
+    qty: Number(r.qty) || 0,
+  };
+}
+
 /** 规范化业务数据：缺字段时用种子补齐，保证页面永远拿到完整结构 */
 export function normalizeBusiness(input) {
   const seed = createSeedBusiness();
@@ -120,7 +195,8 @@ export function normalizeBusiness(input) {
     ...input,
     capacity: { ...seed.capacity, ...(input.capacity || {}) },
     sites: Array.isArray(input.sites) && input.sites.length ? input.sites : seed.sites,
-    people: Array.isArray(input.people) && input.people.length ? input.people : seed.people,
+    people: (Array.isArray(input.people) && input.people.length ? input.people : seed.people).map(normalizePerson),
+    outputRecords: Array.isArray(input.outputRecords) ? input.outputRecords.map(normalizeRecord) : seed.outputRecords,
     version: BUSINESS_VERSION,
   };
 }

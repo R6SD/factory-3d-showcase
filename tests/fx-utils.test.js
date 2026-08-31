@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clamp01, easeOutCubic, easeOutExpo, tweenValue, ringDash } from '../src/ui/fx-utils.js';
+import { clamp01, easeOutCubic, tweenValue, ringDash } from '../src/ui/fx-utils.js';
 
 describe('clamp01', () => {
   it('夹取到 [0,1]，非法值按 0', () => {
@@ -15,8 +15,6 @@ describe('缓动函数', () => {
   it('端点为 0/1', () => {
     expect(easeOutCubic(0)).toBe(0);
     expect(easeOutCubic(1)).toBe(1);
-    expect(easeOutExpo(0)).toBe(0);
-    expect(easeOutExpo(1)).toBe(1);
   });
   it('缓出在中段快于线性', () => {
     expect(easeOutCubic(0.5)).toBeCloseTo(0.875, 5);

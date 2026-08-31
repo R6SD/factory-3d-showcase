@@ -20,13 +20,13 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2",
-    "three": "^0.180.0"
+    "three": "^0.180.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",
     "electron": "^37.2.6",
     "electron-builder": "^26.0.12",
-    "jsdom": "^29.1.1",
     "vite": "^7.1.7",
     "vitest": "^4.1.11"
   },

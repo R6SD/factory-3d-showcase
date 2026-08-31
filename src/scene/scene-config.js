@@ -19,8 +19,8 @@ export const defaults = {
     environment: 'factory', display: 'standard', rotationSpeed: .3, exposure: 1,
     ambientIntensity: .6, sunIntensity: 1.4, shadowSoftness: .6, shadowQuality: 'high',
     fov: 35, dpr: 'auto', preset: 'balanced', grid: false, shadows: true,
-    rotate: true, zoom: true, pan: true, sunCycle: false,
-    sunAzimuth: 45, sunElevation: 60, sunManual: false,
+    rotate: true, zoom: true, pan: true,
+    sunAzimuth: 45, sunElevation: 60,
     // 裸眼 3D：stereoMode=off 关闭 | parallax 运动视差(裸眼、单目无重影) | barrier 视差屏障 | sbs 并排立体 | anaglyph 红蓝立体
     stereoMode: 'parallax', parallaxStrength: .4, parallaxAuto: false,
     // 查看页 UI 层流星氛围背景（纯 CSS、不影响 WebGL），可在“模型与场景”设置中关闭
@@ -30,24 +30,32 @@ export const defaults = {
 };
 
 /**
+ * 把任意持久化数据合并为合法配置（深合并关键嵌套层，补齐新字段，迁移旧标题）。
+ * 数据非法/版本不支持时回退默认值。供 localStorage 与后端 /api/config 共用。
+ */
+export function mergeConfig(data) {
+  if (!data || ![3, 4].includes(data.version)) return defaults;
+  const viewer = { ...defaults.viewer, ...data.viewer };
+  // 旧版默认标题迁移为新标题
+  if (viewer.title === '厂区三维工作台') viewer.title = defaults.viewer.title;
+  if (viewer.titleEn === '3D Campus Workbench') viewer.titleEn = defaults.viewer.titleEn;
+  return {
+    ...defaults, ...data, version: 4,
+    branding: { ...defaults.branding, ...data.branding },
+    viewer,
+    scene: { ...defaults.scene, ...data.scene },
+    carousel: { ...defaults.carousel, ...(data.carousel || {}) },
+  };
+}
+
+/**
  * 读取本地配置并迁移到当前版本；任何损坏/不支持的数据都回退到默认值。
  * @param {Storage|undefined} storage 可注入的存储实现，默认全局 localStorage
  */
 export function loadConfig(storage = (typeof localStorage !== 'undefined' ? localStorage : undefined)) {
   try {
     const raw = storage?.getItem(STORE_KEY) ?? storage?.getItem(LEGACY_STORE_KEY);
-    const data = JSON.parse(raw);
-    if (!data || ![3, 4].includes(data.version)) return defaults;
-    const viewer = { ...defaults.viewer, ...data.viewer };
-    // 旧版默认标题迁移为新标题
-    if (viewer.title === '厂区三维工作台') viewer.title = defaults.viewer.title;
-    if (viewer.titleEn === '3D Campus Workbench') viewer.titleEn = defaults.viewer.titleEn;
-    return {
-      ...defaults, ...data, version: 4,
-      branding: { ...defaults.branding, ...data.branding },
-      viewer,
-      scene: { ...defaults.scene, ...data.scene },
-    };
+    return mergeConfig(JSON.parse(raw));
   } catch {
     return defaults;
   }

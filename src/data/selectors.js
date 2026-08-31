@@ -4,12 +4,12 @@
  */
 import { DEVICE_COLORS } from './seed.js';
 
-/** 员工关键字筛选（姓名 / 工号 / 岗位 / 部门），大小写与空格不敏感 */
+/** 员工关键字筛选（姓名 / 工号 / 岗位 / 部门 / 工段），大小写与空格不敏感 */
 export function filterPeople(people, keyword) {
   const q = (keyword || '').trim().toLowerCase();
   const list = Array.isArray(people) ? people : [];
   if (!q) return list;
-  return list.filter((p) => [p.name, p.id, p.role, p.dept].join(' ').toLowerCase().includes(q));
+  return list.filter((p) => [p.name, p.id, p.role, p.dept, p.section].join(' ').toLowerCase().includes(q));
 }
 
 /**
@@ -63,40 +63,102 @@ export function deviceStatusList(capacity) {
   ];
 }
 
+/* ===================== 产出明细聚合（产能看板） ===================== */
+
+const recordsOf = (records) => (Array.isArray(records) ? records : []);
+
+/** 判断 YYYY-MM-DD 是否属于 yyyy-mm 月份 */
+export function inMonth(date, ym) {
+  return typeof date === 'string' && date.slice(0, 7) === ym;
+}
+
+/** 取某月份全部产出记录 */
+export function monthRecords(records, ym) {
+  return recordsOf(records).filter((r) => inMonth(r.date, ym));
+}
+
+/** 合计产量 */
+export function sumQty(records) {
+  return recordsOf(records).reduce((s, r) => s + (Number(r.qty) || 0), 0);
+}
+
 /**
- * 场地列表（带 parent）→ 深度优先、父在子前的有序序列，每项带 depth（用于左栏缩进树）。
- * 孤儿节点（parent 找不到）按根节点处理，保证不丢数据。
+ * 按指定字段分组汇总产量，返回降序数组 [{key,qty}]。
+ * @param {string} field 'dept' | 'section' | 'line' | 'person'
  */
-export function orderSitesWithDepth(sites) {
-  const list = Array.isArray(sites) ? sites : [];
-  const byId = new Map(list.map((s) => [s.id, s]));
-  const childrenOf = new Map();
-  const roots = [];
-  list.forEach((s) => {
-    if (s.parent && byId.has(s.parent)) {
-      if (!childrenOf.has(s.parent)) childrenOf.set(s.parent, []);
-      childrenOf.get(s.parent).push(s.id);
-    } else {
-      roots.push(s.id);
-    }
-  });
+export function groupSum(records, field) {
+  const map = new Map();
+  for (const r of recordsOf(records)) {
+    const key = (r[field] ?? '').toString().trim() || '未分配';
+    map.set(key, (map.get(key) || 0) + (Number(r.qty) || 0));
+  }
+  return [...map.entries()]
+    .map(([key, qty]) => ({ key, qty }))
+    .sort((a, b) => b.qty - a.qty);
+}
+
+/** 整月各部门总产能（降序） */
+export function deptMonthly(records, ym) {
+  return groupSum(monthRecords(records, ym), 'dept');
+}
+
+/** 整月分工段产出（降序） */
+export function sectionMonthly(records, ym) {
+  return groupSum(monthRecords(records, ym), 'section').filter((x) => x.key !== '未分配');
+}
+
+/**
+ * 个人产出月度排名（降序），合并花名册信息（部门/工段/照片字段）。
+ * @returns {{name,dept,section,qty,person}[]}
+ */
+export function personRanking(records, ym, people = []) {
+  const byName = new Map((Array.isArray(people) ? people : []).map((p) => [p.name, p]));
+  return groupSum(monthRecords(records, ym), 'person')
+    .map((x) => ({ name: x.key, qty: x.qty, person: byName.get(x.key) || null,
+      dept: byName.get(x.key)?.dept || '', section: byName.get(x.key)?.section || '' }));
+}
+
+/**
+ * 某线体在指定月份的逐日产能（补齐没有记录的日期为 0，跳过周末与月外日）。
+ * @returns {{date,qty}[]}
+ */
+export function lineDaily(records, line, ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const days = new Date(y, m, 0).getDate();
+  const map = new Map();
+  for (const r of monthRecords(records, ym)) {
+    if (r.line !== line) continue;
+    map.set(r.date, (map.get(r.date) || 0) + (Number(r.qty) || 0));
+  }
   const out = [];
-  const visited = new Set();
-  const walk = (id, depth) => {
-    if (visited.has(id)) return; // 环保护
-    visited.add(id);
-    const node = byId.get(id);
-    if (!node) return;
-    out.push({ ...node, depth });
-    (childrenOf.get(id) || []).forEach((c) => walk(c, depth + 1));
-  };
-  roots.forEach((r) => walk(r, 0));
-  // 兜底：父链最终成环、无正常根的“孤岛”节点也不丢失
-  list.forEach((s) => { if (!visited.has(s.id)) walk(s.id, 0); });
+  for (let d = 1; d <= days; d++) {
+    const date = `${ym}-${String(d).padStart(2, '0')}`;
+    const wd = new Date(y, m - 1, d).getDay();
+    if (wd === 0 || wd === 6) continue;
+    out.push({ date, qty: map.get(date) || 0 });
+  }
   return out;
 }
 
-/** 取某场地的直接子节点列表 */
-export function childSites(sites, parentId) {
-  return (Array.isArray(sites) ? sites : []).filter((s) => s.parent === parentId);
+/** 从记录中提取去重选项（如全部线体），按名称排序 */
+export function distinctValues(records, field) {
+  const set = new Set();
+  for (const r of recordsOf(records)) {
+    const v = (r[field] ?? '').toString().trim();
+    if (v) set.add(v);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+}
+
+/** 最近 N 个月份选项（yyyy-mm，含本月），索引 0 为本月 */
+export function recentMonths(n = 6, now = new Date()) {
+  const out = [];
+  let y = now.getFullYear();
+  let m = now.getMonth();
+  for (let i = 0; i < n; i++) {
+    out.push(`${y}-${String(m + 1).padStart(2, '0')}`);
+    m -= 1;
+    if (m < 0) { m = 11; y -= 1; }
+  }
+  return out;
 }

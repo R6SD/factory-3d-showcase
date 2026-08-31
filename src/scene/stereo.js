@@ -103,13 +103,6 @@ export class StereoPipeline {
     this.effect?.setSize(w, h);
   }
 
-  /** 设置双目间距（仅支持该接口的效果器生效，如 StereoEffect） */
-  setEyeSeparation(v) {
-    if (this.effect && typeof this.effect.setEyeSeparation === 'function') {
-      this.effect.setEyeSeparation(v);
-    }
-  }
-
   /** 按当前模式渲染：双目效果器或普通单目 */
   render(scene, camera) {
     if (this.effect) this.effect.render(scene, camera);

@@ -230,9 +230,11 @@ function mountLabelEditor() {
       return { visible: false, anchor: null };
     }
     tag.style.display = '';
-    // 地图钉：标签底部对齐锚点，圆点固定在模型表面
-    tag.style.left = `${anchor.x}px`;
-    tag.style.top = `${anchor.y}px`;
+    // 屏幕投影锚点 + 用户拖拽保存的像素偏移（offset.x 向右、offset.y 向下为正）
+    const ox = label.offset?.x || 0;
+    const oy = label.offset?.y || 0;
+    tag.style.left = `${anchor.x + ox}px`;
+    tag.style.top = `${anchor.y + oy}px`;
     return { visible: true, anchor };
   }
 
@@ -251,22 +253,24 @@ function mountLabelEditor() {
         if (event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
-        drag = { id: label.id, moved: false, startX: event.clientX, startY: event.clientY };
+        drag = {
+          id: label.id,
+          moved: false,
+          startX: event.clientX,
+          startY: event.clientY,
+          origX: label.offset?.x || 0,
+          origY: label.offset?.y || 0,
+        };
         tag.setPointerCapture(event.pointerId);
         tag.classList.add('dragging');
       });
 
       tag.addEventListener('pointermove', (event) => {
         if (!drag || drag.id !== label.id) return;
-        const anchor = projectAnchor(label);
-        if (!anchor) return;
-        const box = viewer.getBoundingClientRect();
-        const mouseX = event.clientX - box.left;
-        const mouseY = event.clientY - box.top;
-        // 地图钉模式下，拖动调整标签相对于锚点的垂直偏移
+        // 以按下瞬间的偏移为基准做 1:1 拖拽，标签跟随光标，且不会因锚点投影导致方向反转
         label.offset = {
-          x: 0,
-          y: Math.round(anchor.y - mouseY),
+          x: Math.round(drag.origX + (event.clientX - drag.startX)),
+          y: Math.round(drag.origY + (event.clientY - drag.startY)),
         };
         drag.moved = true;
         moveTag(tag, label);
