@@ -63,28 +63,59 @@ function pad2(n) { return String(n).padStart(2, '0'); }
 const DAILY_BASE = { 总装工: 285, 机加工: 240, 质检工: 340, 总装工段长: 70, 机加工段长: 60 };
 
 /**
- * 生成当月（1 号至今天）逐日逐人产出明细，跳过周末。
- * 只有归属工段且有产出基准的人员生成记录。
+ * 生成近 N 个月（默认 6，含当月）逐日逐人产出明细，跳过周末。
+ * 当月只生成到今天；往月整月生成，使趋势图与环比分析有数据支撑。
+ * 每人每月有一个确定性的“月度状态系数”（0.92~1.06），保证环比有可解释的波动。
  */
-function seedOutputRecords(people, now = new Date()) {
+function seedOutputRecords(people, now = new Date(), monthsBack = 5) {
   const records = [];
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const today = now.getDate();
-  for (let day = 1; day <= today; day++) {
-    const d = new Date(year, month, day);
-    const wd = d.getDay();
-    if (wd === 0 || wd === 6) continue;
-    const date = `${year}-${pad2(month + 1)}-${pad2(day)}`;
-    for (const p of people) {
-      const base = DAILY_BASE[p.role];
-      if (!base) continue;
-      const rng = mulberry32(hashStr(date + p.id));
-      const qty = Math.round(base * (0.85 + rng() * 0.3));
-      records.push({ date, dept: p.dept, section: p.section || '', line: p.line || '', person: p.name, qty });
+  for (let back = monthsBack; back >= 0; back--) {
+    const monthStart = new Date(now.getFullYear(), now.getMonth() - back, 1);
+    const year = monthStart.getFullYear();
+    const month = monthStart.getMonth();
+    const lastDay = back === 0 ? now.getDate() : new Date(year, month + 1, 0).getDate();
+    for (let day = 1; day <= lastDay; day++) {
+      const d = new Date(year, month, day);
+      const wd = d.getDay();
+      if (wd === 0 || wd === 6) continue;
+      const date = `${year}-${pad2(month + 1)}-${pad2(day)}`;
+      for (const p of people) {
+        const base = DAILY_BASE[p.role];
+        if (!base) continue;
+        const monthRng = mulberry32(hashStr(date.slice(0, 7) + p.id));
+        const monthFactor = 0.92 + monthRng() * 0.14;
+        const rng = mulberry32(hashStr(date + p.id));
+        const qty = Math.round(base * monthFactor * (0.85 + rng() * 0.3));
+        records.push({ date, dept: p.dept, section: p.section || '', line: p.line || '', person: p.name, qty });
+      }
     }
   }
   return records;
+}
+
+/**
+ * 按月生成产量计划：每个工作日、每位有产出基准人员的基准量之和，再上浮一个确定性的目标系数（1.0~1.12）。
+ * 计划略高于实际均值，使达成率呈现 90%~105% 的合理分布。
+ */
+function seedMonthlyPlans(people, now = new Date(), monthsBack = 5) {
+  const plans = {};
+  for (let back = monthsBack; back >= 0; back--) {
+    const monthStart = new Date(now.getFullYear(), now.getMonth() - back, 1);
+    const year = monthStart.getFullYear();
+    const month = monthStart.getMonth();
+    const lastDay = back === 0 ? now.getDate() : new Date(year, month + 1, 0).getDate();
+    const ym = `${year}-${pad2(month + 1)}`;
+    let workdays = 0;
+    for (let day = 1; day <= lastDay; day++) {
+      const wd = new Date(year, month, day).getDay();
+      if (wd !== 0 && wd !== 6) workdays += 1;
+    }
+    const baseTotal = people.reduce((s, p) => s + (DAILY_BASE[p.role] || 0), 0);
+    const rng = mulberry32(hashStr(ym + 'plan'));
+    const targetFactor = 1.0 + rng() * 0.12;
+    plans[ym] = Math.round(workdays * baseTotal * targetFactor);
+  }
+  return plans;
 }
 
 /**
@@ -95,6 +126,7 @@ export function createSeedBusiness(now = new Date()) {
   return {
     version: BUSINESS_VERSION,
     updatedAt: new Date(0).toISOString(),
+    monthlyPlans: seedMonthlyPlans(people, now),
     capacity: {
       output: 16842,
       planned: 20500,
@@ -195,6 +227,7 @@ export function normalizeBusiness(input) {
     ...input,
     capacity: { ...seed.capacity, ...(input.capacity || {}) },
     sites: Array.isArray(input.sites) && input.sites.length ? input.sites : seed.sites,
+    monthlyPlans: { ...seed.monthlyPlans, ...(input.monthlyPlans || {}) },
     people: (Array.isArray(input.people) && input.people.length ? input.people : seed.people).map(normalizePerson),
     outputRecords: Array.isArray(input.outputRecords) ? input.outputRecords.map(normalizeRecord) : seed.outputRecords,
     version: BUSINESS_VERSION,

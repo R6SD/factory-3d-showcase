@@ -25,16 +25,47 @@ describe('seed 种子数据', () => {
     expect(Array.isArray(partial.outputRecords)).toBe(true);
   });
 
-  it('种子产出明细结构完整：日期/部门/工段/线体/姓名/产量', () => {
+  it('种子产出明细结构完整：日期/部门/工段/线体/姓名/产量，覆盖近 6 个月', () => {
     const biz = createSeedBusiness(new Date(2026, 8, 15));
     expect(biz.outputRecords.length).toBeGreaterThan(0);
-    const r = biz.outputRecords[0];
+    const r = biz.outputRecords.find((x) => x.date.startsWith('2026-09'));
+    expect(r).toBeTruthy();
     expect(r.date).toMatch(/^2026-09-\d{2}$/);
     expect(typeof r.qty).toBe('number');
     expect(r.person).toBeTruthy();
     // 同一天同一人只有一条
     const key = `${r.date}|${r.person}`;
     expect(biz.outputRecords.filter((x) => `${x.date}|${x.person}` === key)).toHaveLength(1);
+    // 近 6 个月（含当月）都有产出，支撑趋势与环比
+    const months = new Set(biz.outputRecords.map((x) => x.date.slice(0, 7)));
+    expect(months.has('2026-09')).toBe(true);
+    expect(months.has('2026-05')).toBe(true);
+    expect(months.size).toBe(6);
+    // 当月只生成到今天（15 号），不含未来日期
+    expect(biz.outputRecords.some((x) => x.date > '2026-09-15')).toBe(false);
+  });
+
+  it('monthlyPlans 覆盖近 6 个月、计划为正且与实际同量级，normalize 可合并覆盖', () => {
+    const now = new Date(2026, 8, 15);
+    const biz = createSeedBusiness(now);
+    const keys = Object.keys(biz.monthlyPlans);
+    expect(keys).toHaveLength(6);
+    expect(keys).toContain('2026-09');
+    expect(keys).toContain('2026-05');
+    for (const k of keys) expect(biz.monthlyPlans[k]).toBeGreaterThan(0);
+    // 计划与实际同量级（达成率应在 60%~115% 的合理区间）
+    const actual = biz.outputRecords.filter((x) => x.date.startsWith('2026-08'))
+      .reduce((s, x) => s + x.qty, 0);
+    const rate = actual / biz.monthlyPlans['2026-08'];
+    expect(rate).toBeGreaterThan(0.6);
+    expect(rate).toBeLessThan(1.15);
+    // normalize：用户数据可覆盖单月计划，其余月份保留种子（种子按真实当前日期生成，只验证结构）
+    const merged = normalizeBusiness({ monthlyPlans: { '2026-08': 12345 } });
+    expect(merged.monthlyPlans['2026-08']).toBe(12345);
+    expect(Object.keys(merged.monthlyPlans).length).toBeGreaterThanOrEqual(6);
+    for (const k of Object.keys(merged.monthlyPlans)) {
+      expect(merged.monthlyPlans[k]).toBeGreaterThan(0);
+    }
   });
 });
 

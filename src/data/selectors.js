@@ -97,6 +97,69 @@ export function groupSum(records, field) {
     .sort((a, b) => b.qty - a.qty);
 }
 
+/** 上一个月（yyyy-mm） */
+export function prevMonth(ym) {  const [y, m] = String(ym || '').split('-').map(Number);
+  if (!y || !m) return '';
+  const d = new Date(y, m - 2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** 近 N 个月每月总产出，按时间升序返回 [{ym,qty}]，供趋势图使用 */
+export function monthTrend(records, months) {
+  const list = Array.isArray(months) ? months : [];
+  return list
+    .map((ym) => ({ ym, qty: sumQty(monthRecords(records, ym)) }))
+    .reverse();
+}
+
+/** 某月份产出概览：总量 / 参与人数 / 有效工作日 / 日均 / 人均 */
+export function monthStats(records, ym) {
+  const recs = monthRecords(records, ym);
+  const people = new Set(recs.map((r) => (r.person || '').trim()).filter(Boolean));
+  const days = new Set(recs.map((r) => (r.date || '').trim()).filter(Boolean));
+  const qty = sumQty(recs);
+  return {
+    qty,
+    people: people.size,
+    days: days.size,
+    avgPerDay: days.size ? Math.round(qty / days.size) : 0,
+    avgPerPerson: people.size ? Math.round(qty / people.size) : 0,
+  };
+}
+
+/**
+ * 计划达成率：实际产量 / 月计划（%，保留 1 位小数）。
+ * @returns {number|null} 无计划或计划为 0 时返回 null。
+ */
+export function monthPlanAttainment(records, monthlyPlans, ym) {
+  const plan = (monthlyPlans || {})[ym];
+  if (!plan || plan <= 0) return null;
+  const actual = sumQty(monthRecords(records, ym));
+  return Math.round((actual / plan) * 1000) / 10;
+}
+
+/**
+ * 分组汇总并附环比：与上一月同 key 对比。
+ * @returns [{key,qty,prevQty,delta,pct}] pct 为环比百分比（上期为 0 时为 null），降序。
+ */
+export function groupSumWithDelta(records, field, ym) {
+  const cur = groupSum(monthRecords(records, ym), field);
+  const prev = new Map(groupSum(monthRecords(records, prevMonth(ym)), field).map((x) => [x.key, x.qty]));
+  return cur.map((x) => {
+    const prevQty = prev.get(x.key) || 0;
+    const delta = x.qty - prevQty;
+    const pct = prevQty ? Math.round((delta / prevQty) * 1000) / 10 : null;
+    return { ...x, prevQty, delta, pct };
+  });
+}
+
+/** 按部门筛选记录（部门→工段→个人下钻用）；dept 为空时返回原列表 */
+export function recordsOfDept(records, dept) {
+  const d = (dept || '').trim();
+  if (!d) return recordsOf(records);
+  return recordsOf(records).filter((r) => (r.dept ?? '').toString().trim() === d);
+}
+
 /** 整月各部门总产能（降序） */
 export function deptMonthly(records, ym) {
   return groupSum(monthRecords(records, ym), 'dept');
