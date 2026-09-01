@@ -2,6 +2,22 @@
 
 本项目版本号遵循语义化版本（SemVer）：主版本.次版本.修订号；Windows 安装包另带四段式文件编号（末位为构建号）。
 
+## [1.4.3] - 2026-09-01
+
+### 新增（/admin 月度计划 Excel 导入/导出）
+- **批量导入**：月度计划页新增「下载导入模板 / 导入 Excel」按钮，以 `月份`（yyyy-mm）、`计划产量` 两列批量导入计划并覆盖更新；非正数视为删除该月计划。
+- **导出当前**：新增「导出当前」按钮，导出近 6 个月的月份、计划产量、实际产出三列。
+- **纯函数扩展**：`src/data/admin-plans.js` 新增 `parsePlanImport`（解析 Excel 行为 `{ym,plan}`，过滤非法月份与非数字）、`mergePlanImport`（合并导入行，正数覆盖、0/空删除）、`buildPlanExportRows`（构建导出行），保持数据层纯函数风格。
+
+### 变更
+- `AdminPlans` 组件新增 `.admin-tools` 工具栏，与人员/产出记录页的导入导出能力对齐。
+
+### 测试
+- `tests/admin-plans.test.js` 由 5 组扩展为 9 组，覆盖 `parsePlanImport` / `mergePlanImport` / `buildPlanExportRows` 的正常/边界/脏输入；全量 **137 个** 单元测试通过。
+
+### 构建
+- 版本号 1.4.2 → 1.4.3，Windows 文件编号 1.4.3.0。
+
 ## [1.4.2] - 2026-09-01
 
 ### 新增（/admin 月度计划可视化编辑）

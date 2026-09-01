@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPlanRows, applyPlanUpdates } from '../src/data/admin-plans.js';
+import { buildPlanRows, applyPlanUpdates, parsePlanImport, mergePlanImport, buildPlanExportRows } from '../src/data/admin-plans.js';
 
 const records = [
   { date: '2026-09-01', dept: '制造一部', section: '总装工段', line: '总装线 A', person: '赵磊', qty: 100 },
@@ -37,5 +37,43 @@ describe('admin-plans 纯函数', () => {
   it('applyPlanUpdates 不修改未涉及的月份', () => {
     const next = applyPlanUpdates({ '2026-06': 1000 }, { '2026-09': '300' }, ['2026-09']);
     expect(next).toEqual({ '2026-09': 300, '2026-06': 1000 });
+  });
+
+  it('parsePlanImport 解析合法月份与计划量，过滤非法行', () => {
+    const rows = [
+      { '月份': '2026-09', '计划产量': 550 },
+      { '月份': '2026-10', '计划产量': '800' },
+      { '月份': '2026/09', '计划产量': 100 },
+      { '月份': '2026-11', '计划产量': 'abc' },
+      { '月份': '2026-12', '计划产量': 0 },
+    ];
+    expect(parsePlanImport(rows)).toEqual([
+      { ym: '2026-09', plan: 550 },
+      { ym: '2026-10', plan: 800 },
+      { ym: '2026-12', plan: 0 },
+    ]);
+  });
+
+  it('parsePlanImport 兼容英文字段名与空输入', () => {
+    expect(parsePlanImport([{ ym: '2026-09', plan: 100 }])).toEqual([{ ym: '2026-09', plan: 100 }]);
+    expect(parsePlanImport(null)).toEqual([]);
+    expect(parsePlanImport([])).toEqual([]);
+  });
+
+  it('mergePlanImport 正数覆盖、0/空删除，保留未涉及月份', () => {
+    const next = mergePlanImport({ '2026-06': 1000, '2026-09': 100 }, [
+      { ym: '2026-09', plan: 550 },
+      { ym: '2026-08', plan: 0 },
+      { ym: '2026-07', plan: 300.6 },
+    ]);
+    expect(next).toEqual({ '2026-06': 1000, '2026-09': 550, '2026-07': 301 });
+  });
+
+  it('buildPlanExportRows 输出中文表头与计划/实际产出', () => {
+    const rows = buildPlanExportRows(records, { '2026-09': 300 }, ['2026-09', '2026-08']);
+    expect(rows).toEqual([
+      { 月份: '2026-09', 计划产量: 300, 实际产出: 300 },
+      { 月份: '2026-08', 计划产量: 0, 实际产出: 400 },
+    ]);
   });
 });
