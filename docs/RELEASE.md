@@ -5,7 +5,7 @@
 | 版本 | **1.4.3**（`package.json` 的 `version`；Windows 文件编号 `1.4.3.0`） |
 | 日期 | **2026-10-19** |
 | 对照基线 | Git 标签 `v1.4.2`（`14d2386`）。版本号在提交 `7c51ebc`（2026-09-01，见 `CHANGELOG.md`）升到 1.4.3，其后合入 `main` 的 PR 没有再改版本号。 |
-| 本文对应的 `main` | `e260e67`（Merge pull request #19） |
+| 本文对应的 `main` | `0dbb2cb`（Merge PR #18） |
 
 本说明只记录 `v1.4.2` 之后已经出现在 `git log` 里的变更。未合并的 Issue 不写成已交付功能。
 
@@ -22,34 +22,35 @@
 | PR [#16](https://github.com/R6SD/factory-3d-showcase/pull/16) | ci: run test and build on push and pull request to main | 新增 `.github/workflows/ci.yml`。推送到 `main` 以及指向 `main` 的 PR 会跑 `npm ci`、`npm test`、`npm run build`。 |
 | PR [#17](https://github.com/R6SD/factory-3d-showcase/pull/17) | ci: GitHub Pages 部署 Web 预览 (#10) | 新增 `.github/workflows/pages.yml`。构建时设置 `VITE_BASE=/factory-3d-showcase/`，并把 `dist/index.html` 复制为 `dist/404.html`。README 增加「Web 预览 / GitHub Pages」。 |
 | PR [#19](https://github.com/R6SD/factory-3d-showcase/pull/19) | docs: 添加无头浏览器验证技能 verify-app | 增加 `.cursor/skills/verify-app/SKILL.md`，约定用无头浏览器核对首页三维、模型库和后台导入。 |
+| PR [#18](https://github.com/R6SD/factory-3d-showcase/pull/18) | Split Admin into its own module and document app boundaries | 把 `/admin` 拆到 `src/ui/admin/`（人员与组织、产出记录、月度计划、照片库，以及仍从 `src/app.jsx` 引入的模型库和设置中心）。按钮、`accept=".xlsx,.csv"` 和导入提示与拆分前相同。并增加 `docs/adr/0004-app-module-boundaries.md`。 |
 
-展示端侧栏路由（`src/app.jsx`）：`/` 场地总览、`/models` 模型库、`/capacity` 产能看板、`/organization` 组织关系、`/settings` 设置中心，以及 `/admin` 后端数据管理。
+展示端侧栏路由仍在 `src/app.jsx`：`/` 场地总览、`/models` 模型库、`/capacity` 产能看板、`/organization` 组织关系、`/settings` 设置中心。`/admin` 后端数据管理由 `src/app.jsx` 挂到该路径，页面在 `src/ui/admin/`。
 
 ## CI 状态（`ci.yml`）
 
 工作流名称是 **CI**，文件是 `.github/workflows/ci.yml`。触发条件：push 到 `main`，以及 pull request 目标分支为 `main`。作业 `test-and-build` 在 `ubuntu-latest`、Node 22 上执行 `npm ci`、`npm test`、`npm run build`。
 
-截至 2026-10-19，`main`（`e260e67`）最近一次 CI **成功**：
+截至 2026-10-19，`main`（`0dbb2cb`）最近一次 CI **成功**：
 
-- 运行：<https://github.com/R6SD/factory-3d-showcase/actions/runs/39307014496>
-- 时间：2026-10-19T18:58:20Z
+- 运行：<https://github.com/R6SD/factory-3d-showcase/actions/runs/39311137157>
+- 时间：2026-10-19T19:27:27Z
 - 结论：`success`
 
 同一次推送触发的 **Deploy GitHub Pages**（`pages.yml`，不是 `ci.yml`）失败，原因见下方已知问题。不要把 Pages 工作流的红叉当成 CI 未通过。
 
-本地在同一棵 `e260e67` 上复跑（Node v22.23.3，未设置 `VITE_BASE`）：
+本地在合入 `0dbb2cb` 之后复跑（Node v22.23.3，未设置 `VITE_BASE`）：
 
 | 命令 | 退出码 | 结果 |
 |---|---|---|
 | `npm ci` | 0 | 安装 516 个包 |
-| `npm test` | 0 | vitest 4.1.11：16 个文件、**145** 个测试通过 |
+| `npm test` | 0 | vitest 4.1.11：17 个文件、**147** 个测试通过 |
 | `npm run build` | 0 | vite 7.3.6 成功。控制台有「chunk 大于 500 kB」警告，构建本身成功，产物在 `dist/` |
 
 ## 已知问题
 
 1. **照片管理只在桌面端。** Web 构建和 GitHub Pages 构建没有照片的浏览器回落。`/admin` → **照片库** 依赖 `GET/POST /api/photos`（Electron 本地服务）。`npm run dev` / `npm run preview` 下该接口不存在，列表为空；上传会提示「照片上传失败」。
 2. **没有 `/api` 时，Web 构建改用浏览器存储。** `GET /api/data/business`、`GET /api/config` 非成功时，业务数据写入 `localStorage` 键 `factory-business-v1`，配置写入 `factory-workbench-v4`。模型文件在 `/api/models` 不可用时写入 IndexedDB 库 `factory-model-library`。这两条接口 404 不表示页面崩溃。设置中心 → **数据与集成** 的来源文案为「浏览器本地存储」。桌面端来源文案为「本地后端服务（已落盘）」。
-3. **GitHub Pages 尚未在仓库设置里打开，预览地址还不是活的。** <https://r6sd.github.io/factory-3d-showcase/> 当前返回 HTTP 404。`main` 上最近一次 Pages 部署失败：<https://github.com/R6SD/factory-3d-showcase/actions/runs/39307014442>（`actions/configure-pages` 报 `Get Pages site failed` / `Not Found`）。需要仓库所有者在 Settings → Pages → Source 选择 **GitHub Actions** 之后才会发布。开通前失败是预期情况，本交付不改仓库设置。
+3. **GitHub Pages 尚未在仓库设置里打开，预览地址还不是活的。** <https://r6sd.github.io/factory-3d-showcase/> 当前返回 HTTP 404。`main` 上最近一次 Pages 部署失败：<https://github.com/R6SD/factory-3d-showcase/actions/runs/39311137145>（`actions/configure-pages` 报 `Get Pages site failed` / `Not Found`）。需要仓库所有者在 Settings → Pages → Source 选择 **GitHub Actions** 之后才会发布。开通前失败是预期情况，本交付不改仓库设置。
 4. **开放中的 `bug` 标签：** [#20](https://github.com/R6SD/factory-3d-showcase/issues/20)「fix: 导入与存储的错误处理收尾（坏文件提示、分包加载失败、IndexedDB 不可用）」。现状：0 字节或无法解析的 `.xlsx` 会走「未解析到有效行：需包含……列」，文案容易理解成缺列，而不是「文件无法解析」。exceljs 动态导入失败、以及隐私模式下 IndexedDB 不可用，仍可能出现未处理的拒绝。演示 Checklist 按**当前页面文案**验收，不按 #20 的目标文案验收。
 5. **未进入本版本的开放功能（不要在演示里找）：** [#7](https://github.com/R6SD/factory-3d-showcase/issues/7) 设备拾取、状态色和详情侧栏仍开放，点击场景里的设备不会打开状态侧栏。[#8](https://github.com/R6SD/factory-3d-showcase/issues/8) 性能预算面板仍开放。三维页已有的 **FPS** 按钮是 1.3.0 起的性能监控，不是 #8。
 

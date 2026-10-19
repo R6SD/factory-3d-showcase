@@ -1,6 +1,6 @@
 # 演示 Checklist（1.4.3）
 
-可勾选、可复现。步骤里的路由、按钮和文案都来自当前 `main` 的 `src/app.jsx` 与 `src/data/`。预期结果写的是现在页面上会出现的字，不是未合并 Issue 的目标文案。
+可勾选、可复现。`/admin` 的按钮和文案来自当前 `main` 的 `src/ui/admin/`；其余页面来自 `src/app.jsx` 与 `src/data/`。预期结果写的是现在页面上会出现的字，不是未合并 Issue 的目标文案。
 
 标了 **仅桌面** 的步骤需要 Windows 上的 Electron（安装包或 `npm run desktop`）。其余步骤在浏览器里完成。无头核对使用生产预览，**不要**设置 `VITE_BASE`：
 
@@ -208,7 +208,7 @@ npm run preview -- --host 127.0.0.1 --port 4173 --strictPort
   - 该卡片有「展示模型」「别名」「删除」。格式角标为 `GLB`，标签文字含「本地导入」。
 - [ ] 再导入同名 `demo-pump.glb`。列表里该文件名仍然只有一条。
 - [ ] 刷新 `/models`。`demo-pump.glb` 还在（浏览器 IndexedDB `factory-model-library`；预览没有 `/api/models`）。
-- [ ] 打开 `/admin`，点顶栏「模型库」。同一列表里有 `demo-pump.glb` 和 `Factory Campus A.glb`。`/admin` 的模型库就是展示端的 `Models` 组件。
+- [ ] 打开 `/admin`，点顶栏「模型库」。同一列表里有 `demo-pump.glb` 和 `Factory Campus A.glb`。`/admin` 的模型库就是展示端的 `Models` 组件（仍在 `src/app.jsx`，由 `src/ui/admin/AdminApp.jsx` 引入）。
 
 **仅桌面：** 同一文件还会写到 `%APPDATA%\Factory Web3D Workbench\models`。关掉 Electron 再打开，模型库仍列出该文件。Web 预览不写这个目录。
 
@@ -241,7 +241,7 @@ npm run preview -- --host 127.0.0.1 --port 4173 --strictPort
 
 ## 7. 构建
 
-在仓库根目录、不设置 `VITE_BASE` 时记录（2026-10-19，Node v22.23.3，提交 `e260e67`）：
+在仓库根目录、不设置 `VITE_BASE` 时记录（2026-10-19，Node v22.23.3，已合入 `0dbb2cb`）：
 
 ```text
 $ npm ci
@@ -251,14 +251,14 @@ $ npm test
 > factory-3d-showcase@1.4.3 test
 > vitest run
 
- Test Files  16 passed (16)
-      Tests  145 passed (145)
+ Test Files  17 passed (17)
+      Tests  147 passed (147)
 退出码 0
 
 $ npm run build
 > factory-3d-showcase@1.4.3 build
 > vite build
-✓ built in 4.96s
+✓ built in 6.06s
 退出码 0
 ```
 
