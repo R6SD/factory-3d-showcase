@@ -51,8 +51,7 @@
 1. **照片管理只在桌面端。** Web 构建和 GitHub Pages 构建没有照片的浏览器回落。`/admin` → **照片库** 依赖 `GET/POST /api/photos`（Electron 本地服务）。`npm run dev` / `npm run preview` 下该接口不存在，列表为空；上传会提示「照片上传失败」。
 2. **没有 `/api` 时，Web 构建改用浏览器存储。** `GET /api/data/business`、`GET /api/config` 非成功时，业务数据写入 `localStorage` 键 `factory-business-v1`，配置写入 `factory-workbench-v4`。模型文件在 `/api/models` 不可用时写入 IndexedDB 库 `factory-model-library`。这两条接口 404 不表示页面崩溃。设置中心 → **数据与集成** 的来源文案为「浏览器本地存储」。桌面端来源文案为「本地后端服务（已落盘）」。
 3. **GitHub Pages 尚未在仓库设置里打开，预览地址还不是活的。** <https://r6sd.github.io/factory-3d-showcase/> 当前返回 HTTP 404。`main` 上最近一次 Pages 部署失败：<https://github.com/R6SD/factory-3d-showcase/actions/runs/39311137145>（`actions/configure-pages` 报 `Get Pages site failed` / `Not Found`）。需要仓库所有者在 Settings → Pages → Source 选择 **GitHub Actions** 之后才会发布。开通前失败是预期情况，本交付不改仓库设置。
-4. **开放中的 `bug` 标签：** [#20](https://github.com/R6SD/factory-3d-showcase/issues/20)「fix: 导入与存储的错误处理收尾（坏文件提示、分包加载失败、IndexedDB 不可用）」。现状：0 字节或无法解析的 `.xlsx` 会走「未解析到有效行：需包含……列」，文案容易理解成缺列，而不是「文件无法解析」。exceljs 动态导入失败、以及隐私模式下 IndexedDB 不可用，仍可能出现未处理的拒绝。演示 Checklist 按**当前页面文案**验收，不按 #20 的目标文案验收。
-5. **未进入本版本的开放功能（不要在演示里找）：** [#7](https://github.com/R6SD/factory-3d-showcase/issues/7) 设备拾取、状态色和详情侧栏仍开放，点击场景里的设备不会打开状态侧栏。[#8](https://github.com/R6SD/factory-3d-showcase/issues/8) 性能预算面板仍开放。三维页已有的 **FPS** 按钮是 1.3.0 起的性能监控，不是 #8。
+4. **未进入本版本的开放功能（不要在演示里找）：** [#7](https://github.com/R6SD/factory-3d-showcase/issues/7) 设备拾取、状态色和详情侧栏仍开放，点击场景里的设备不会打开状态侧栏。[#8](https://github.com/R6SD/factory-3d-showcase/issues/8) 性能预算面板仍开放。三维页已有的 **FPS** 按钮是 1.3.0 起的性能监控，不是 #8。
 
 ## 安装（Windows 桌面）
 
