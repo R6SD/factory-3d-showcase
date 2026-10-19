@@ -1082,8 +1082,7 @@ export class SceneRuntime {
       -((event.clientY - rect.top) / rect.height) * 2 + 1,
     );
     this._pickRaycaster.setFromCamera(this._pickPointer, this.camera);
-    // 与设备拾取共用可见性过滤：隐藏节点（含祖先）不算命中，空白处仍可双击归位
-    return !!firstVisibleHit(this._pickRaycaster.intersectObject(model, true));
+    return this._pickRaycaster.intersectObject(model, true).length > 0;
   }
 
   _beginViewReset() {
