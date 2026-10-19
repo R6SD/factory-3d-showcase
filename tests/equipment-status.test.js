@@ -12,7 +12,7 @@ import {
   EQUIPMENT_PICK_DRAG_PX,
   EQUIPMENT_CLICK_SETTLE_MS,
   SELECTED_EMISSIVE_GAIN,
-  isEquipmentClick,
+  shouldPickEquipmentClick,
   isHierarchyVisible,
   firstVisibleHit,
   bindEquipmentPick,
@@ -60,55 +60,39 @@ describe('statusColor', () => {
   });
 });
 
-describe('拾取拖拽阈值', () => {
-  const down = { x: 10, y: 20, button: 0 };
-
-  it('位移不超过阈值算点击，超过则不算', () => {
-    expect(isEquipmentClick(down, { x: 10 + EQUIPMENT_PICK_DRAG_PX, y: 20, button: 0 })).toBe(true);
-    expect(isEquipmentClick(down, { x: 10 + EQUIPMENT_PICK_DRAG_PX + 0.1, y: 20, button: 0 })).toBe(false);
-    expect(isEquipmentClick(down, { x: 16, y: 26, button: 0 })).toBe(false);
+describe('拾取 click 守卫', () => {
+  it('超过 30px 的拖动不算拾取，等于阈值仍算', () => {
+    expect(EQUIPMENT_PICK_DRAG_PX).toBe(30);
+    expect(shouldPickEquipmentClick({ detail: 1, distancePx: 30 })).toBe(true);
+    expect(shouldPickEquipmentClick({ detail: 1, distancePx: 30.1 })).toBe(false);
   });
 
-  it('非左键或缺少按下记录不算点击', () => {
-    expect(isEquipmentClick({ ...down, button: 2 }, { x: 10, y: 20, button: 2 })).toBe(false);
-    expect(isEquipmentClick(null, { x: 10, y: 20, button: 0 })).toBe(false);
-  });
-
-  it('detail > 1 的 pointerup 是双击的第二次，不提交拾取，也不清掉已有选择', () => {
+  it('click.detail > 1 跳过，单击 detail 1 会选中', () => {
+    expect(shouldPickEquipmentClick({ detail: 2, distancePx: 0 })).toBe(false);
+    expect(shouldPickEquipmentClick({ detail: 3, distancePx: 0 })).toBe(false);
+    expect(shouldPickEquipmentClick({ detail: 1, distancePx: 0 })).toBe(true);
     vi.useFakeTimers();
     try {
       const picks = [];
       const gate = createEquipmentPickGate();
-      gate.pointerUp({ detail: 1 }, () => picks.push('first-click'));
+      gate.click({ detail: 1 }, () => picks.push('first'));
       vi.advanceTimersByTime(EQUIPMENT_CLICK_SETTLE_MS - 1);
       expect(picks).toEqual([]);
-      gate.pointerUp({ detail: 2 }, () => picks.push('blank-null'));
+      gate.click({ detail: 2 }, () => picks.push('second'));
       vi.advanceTimersByTime(EQUIPMENT_CLICK_SETTLE_MS);
       expect(picks).toEqual([]);
 
-      gate.pointerUp({ detail: 1 }, () => picks.push('click'));
+      gate.click({ detail: 1 }, () => picks.push('eq-conveyor'));
       vi.advanceTimersByTime(EQUIPMENT_CLICK_SETTLE_MS);
-      expect(picks).toEqual(['click']);
+      expect(picks).toEqual(['eq-conveyor']);
       gate.dispose();
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('下一击的按下取消尚未提交的单击，双击不改变选择', () => {
-    vi.useFakeTimers();
-    try {
-      const picks = [];
-      const gate = createEquipmentPickGate();
-      gate.pointerUp({ detail: 1 }, () => picks.push('a'));
-      gate.cancel();
-      gate.pointerUp({ detail: 2 }, () => picks.push('b'));
-      vi.advanceTimersByTime(EQUIPMENT_CLICK_SETTLE_MS);
-      expect(picks).toEqual([]);
-      gate.dispose();
-    } finally {
-      vi.useRealTimers();
-    }
+  it('isDoubleTap 为真时不拾取，留给合入后的触屏双击判定', () => {
+    expect(shouldPickEquipmentClick({ detail: 1, distancePx: 0, isDoubleTap: true })).toBe(false);
   });
 });
 

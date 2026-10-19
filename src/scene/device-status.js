@@ -8,11 +8,14 @@
  */
 import { statusColor } from '../data/selectors.js';
 
-/** 按下到抬起的位移超过该像素视为拖轨道，不拾取。等于阈值仍算点击。 */
-export const EQUIPMENT_PICK_DRAG_PX = 8;
 /**
- * 单击提交前的等待。双击会再来一次 pointerdown / detail>1 的 pointerup，
- * 这段时间内取消尚未提交的拾取，选择状态保持不变。
+ * 按下到 click 的位移超过该像素视为拖轨道。拖轨道也会冒出 click，不拾取。
+ * 与双击归位的触屏双击位移同为 30px；等于阈值仍算点击。
+ */
+export const EQUIPMENT_PICK_DRAG_PX = 30;
+/**
+ * 单击提交前的等待。双击的第二次 click（detail > 1）会在这段时间内到来，
+ * 取消尚未提交的拾取，侧栏不会闪一下。
  */
 export const EQUIPMENT_CLICK_SETTLE_MS = 600;
 /** 选中时在状态色 emissiveIntensity 上略抬，关闭侧栏后回到状态色本身。 */
@@ -39,16 +42,20 @@ export function firstVisibleHit(intersections) {
 }
 
 /**
- * 左键按下/抬起且位移不超过阈值才是点击。
- * down/up: { x, y, button }
+ * 是否把这次 click 当成设备拾取。
+ * detail > 1 是双击的第二次，不改变选择。位移超过 dragPx 是拖轨道。
+ * isDoubleTap 留给触屏：触屏没有 dblclick，click.detail 不会变成 2。
+ * #23 的 isViewResetDoubleTap 尚未作为依赖接入，合入后把判定结果传给 isDoubleTap。
  */
-export function isEquipmentClick(down, up, threshold = EQUIPMENT_PICK_DRAG_PX) {
-  if (!down || !up) return false;
-  if (down.button != null && down.button !== 0) return false;
-  if (up.button != null && up.button !== 0) return false;
-  const dx = up.x - down.x;
-  const dy = up.y - down.y;
-  return dx * dx + dy * dy <= threshold * threshold;
+export function shouldPickEquipmentClick({
+  detail = 1,
+  distancePx = 0,
+  dragPx = EQUIPMENT_PICK_DRAG_PX,
+  isDoubleTap = false,
+} = {}) {
+  if (isDoubleTap) return false;
+  if (detail > 1) return false;
+  return distancePx <= dragPx;
 }
 
 /**
@@ -70,9 +77,7 @@ export function equipmentIdOf(object, { skipHidden = false } = {}) {
 }
 
 /**
- * 双击会连发两次抬起，第二次 detail > 1。
- * Chrome 的 pointerup.detail 恒为 0，点击次数在紧随的 mouseup 上；规范浏览器则写在 pointerup 上。
- * 返回的闸门把单击推迟到 settle 窗口结束；第二次点击取消它，不提交选择。
+ * 把单击推迟到 settle 窗口结束。click.detail > 1 时取消，不调用 pick。
  */
 export function createEquipmentPickGate(settleMs = EQUIPMENT_CLICK_SETTLE_MS) {
   let timer = null;
@@ -84,7 +89,7 @@ export function createEquipmentPickGate(settleMs = EQUIPMENT_CLICK_SETTLE_MS) {
   };
   return {
     cancel,
-    pointerUp(event, pick) {
+    click(event, pick) {
       if (event?.detail > 1) {
         cancel();
         return;
@@ -218,14 +223,17 @@ export function paintEquipmentStatuses(root, catalog, selectedId) {
  */
 export function bindEquipmentPick(target, handlers) {
   const down = (event) => handlers.onDown(event);
-  const up = (event) => handlers.onUp(event);
+  const up = (event) => handlers.onUp?.(event);
   const cancel = (event) => handlers.onCancel?.(event);
+  const click = (event) => handlers.onClick?.(event);
   target.addEventListener('pointerdown', down);
   target.addEventListener('pointerup', up);
   target.addEventListener('pointercancel', cancel);
+  target.addEventListener('click', click);
   return () => {
     target.removeEventListener('pointerdown', down);
     target.removeEventListener('pointerup', up);
     target.removeEventListener('pointercancel', cancel);
+    target.removeEventListener('click', click);
   };
 }
