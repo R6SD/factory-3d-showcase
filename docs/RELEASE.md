@@ -17,10 +17,10 @@
 |---|---|---|
 | 提交 `7c51ebc` | feat(admin): 月度计划 Excel 批量导入/导出，发布 v1.4.3 | `/admin` → 业务数据 → **月度计划** 增加「下载导入模板 / 导入 Excel / 导出当前」。这一笔把版本号定为 1.4.3，没有单独的 PR 编号。 |
 | PR [#13](https://github.com/R6SD/factory-3d-showcase/pull/13) | fix(electron): cross-platform model name sanitization for Windows paths | 模型文件名在写入前去掉 Windows 路径（反斜杠），避免把 `C:\...\a.glb` 当成文件名。 |
-| PR [#14](https://github.com/R6SD/factory-3d-showcase/pull/14) | feat(shell): 展示端接入模型库与设置中心 | 展示端侧栏增加 `/models`（模型库）和 `/settings`（设置中心），与 `/admin` 里的同名标签共用页面。 |
-| PR [#15](https://github.com/R6SD/factory-3d-showcase/pull/15) | fix: replace xlsx with exceljs and require Node.js 22.12+ | 表格导入导出由 `xlsx` 改为 `exceljs`。`package.json` 的 `engines.node` 为 `>=22.12.0`。 |
 | PR [#16](https://github.com/R6SD/factory-3d-showcase/pull/16) | ci: run test and build on push and pull request to main | 新增 `.github/workflows/ci.yml`。推送到 `main` 以及指向 `main` 的 PR 会跑 `npm ci`、`npm test`、`npm run build`。 |
+| PR [#14](https://github.com/R6SD/factory-3d-showcase/pull/14) | feat(shell): 展示端接入模型库与设置中心 | 展示端侧栏增加 `/models`（模型库）和 `/settings`（设置中心），与 `/admin` 里的同名标签共用页面。 |
 | PR [#17](https://github.com/R6SD/factory-3d-showcase/pull/17) | ci: GitHub Pages 部署 Web 预览 (#10) | 新增 `.github/workflows/pages.yml`。构建时设置 `VITE_BASE=/factory-3d-showcase/`，并把 `dist/index.html` 复制为 `dist/404.html`。README 增加「Web 预览 / GitHub Pages」。 |
+| PR [#15](https://github.com/R6SD/factory-3d-showcase/pull/15) | fix: replace xlsx with exceljs and require Node.js 22.12+ | 表格导入导出由 `xlsx` 改为 `exceljs`。`package.json` 的 `engines.node` 为 `>=22.12.0`。 |
 | PR [#19](https://github.com/R6SD/factory-3d-showcase/pull/19) | docs: 添加无头浏览器验证技能 verify-app | 增加 `.cursor/skills/verify-app/SKILL.md`，约定用无头浏览器核对首页三维、模型库和后台导入。 |
 | PR [#18](https://github.com/R6SD/factory-3d-showcase/pull/18) | Split Admin into its own module and document app boundaries | 把 `/admin` 拆到 `src/ui/admin/`（人员与组织、产出记录、月度计划、照片库，以及仍从 `src/app.jsx` 引入的模型库和设置中心）。按钮、`accept=".xlsx,.csv"` 和导入提示与拆分前相同。并增加 `docs/adr/0004-app-module-boundaries.md`。 |
 
