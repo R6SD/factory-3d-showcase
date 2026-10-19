@@ -694,6 +694,7 @@ export class SceneRuntime {
   }
 
   setView(preset) {
+    this._cancelViewReset();
     const m = this.model;
     if (!m) return;
     const bounds = new THREE.Box3().setFromObject(m);
@@ -780,6 +781,7 @@ export class SceneRuntime {
   }
 
   focusNode(uuid) {
+    this._cancelViewReset();
     const m = this.model;
     if (!m) return;
     let target = null;
@@ -902,6 +904,7 @@ export class SceneRuntime {
         this.exitingModel.userData.exitRot = this.model.rotation.clone();
       }
       this.scene.add(next);
+      this._cancelViewReset();
       this.model = next;
       this._fit(this.model, true);
       // 模型入场景后再强制遍历一次，确保所有网格（含地面）启用阴影
@@ -948,6 +951,7 @@ export class SceneRuntime {
     if (this.mixer) { this.mixer.stopAllAction(); this.mixer = null; }
     const nm = this._factory();
     this.scene.add(nm);
+    this._cancelViewReset();
     this.model = nm;
     this._fit(this.model, true);
     this.model.userData.tScale = this.model.scale.clone();
@@ -973,6 +977,7 @@ export class SceneRuntime {
   }
 
   _onReset() {
+    this._cancelViewReset();
     this._fit(this.model);
     this._needsRender = true;
   }
@@ -1029,7 +1034,37 @@ export class SceneRuntime {
       -((event.clientY - rect.top) / rect.height) * 2 + 1,
     );
     this._pickRaycaster.setFromCamera(this._pickPointer, this.camera);
-    return this._pickRaycaster.intersectObject(model, true).length > 0;
+    const hits = this._pickRaycaster.intersectObject(model, true);
+    return hits.some((hit) => {
+      for (let node = hit.object; node; node = node.parent) {
+        if (node.visible === false) return false;
+      }
+      return true;
+    });
+  }
+
+  _cancelViewReset() {
+    this._viewReset = null;
+  }
+
+  /** now 可注入，单测用它推进 680ms 动画，而不跑整条渲染循环。 */
+  _applyViewReset(now = performance.now()) {
+    if (!this._viewReset) return;
+    const t = (now - this._viewReset.start) / this._viewReset.duration;
+    const sample = sampleViewReset(
+      this._viewReset.fromPos,
+      this._viewReset.fromTarget,
+      this._viewReset.toPos,
+      this._viewReset.toTarget,
+      t,
+    );
+    this.camera.position.set(sample.position.x, sample.position.y, sample.position.z);
+    this.control.target.set(sample.target.x, sample.target.y, sample.target.z);
+    this.camera.lookAt(this.control.target);
+    this.control._sphericalDelta?.set(0, 0, 0);
+    this.control._panOffset?.set(0, 0, 0);
+    if (sample.done) this._viewReset = null;
+    this._needsRender = true;
   }
 
   _beginViewReset() {
@@ -1119,8 +1154,18 @@ export class SceneRuntime {
 
   _onKey(e) {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-    if (e.key === 'r' || e.key === 'R') { this._fit(this.model); this._needsRender = true; }
-    if (e.key === 'f' || e.key === 'F') { document.querySelector('.viewer-page')?.requestFullscreen?.(); }
+    if (e.key === 'r' || e.key === 'R') {
+      this._cancelViewReset();
+      this._fit(this.model);
+      this._needsRender = true;
+    }
+    // 工具栏 T/F/S 与键盘同一预设。F 仍请求全屏，避免丢掉原来的全屏快捷键。
+    if (e.key === 't' || e.key === 'T') this.setView('top');
+    if (e.key === 'f' || e.key === 'F') {
+      this.setView('front');
+      document.querySelector('.viewer-page')?.requestFullscreen?.();
+    }
+    if (e.key === 's' || e.key === 'S') this.setView('side');
     if (e.key === 'l' || e.key === 'L') {
       const v = document.querySelector('.viewer');
       if (v) {
@@ -1163,24 +1208,7 @@ export class SceneRuntime {
     this._lastFrameTime = frameNow;
     this.mixer?.update(dt);
     this.control.update();
-
-    if (this._viewReset) {
-      const t = (performance.now() - this._viewReset.start) / this._viewReset.duration;
-      const sample = sampleViewReset(
-        this._viewReset.fromPos,
-        this._viewReset.fromTarget,
-        this._viewReset.toPos,
-        this._viewReset.toTarget,
-        t,
-      );
-      this.camera.position.set(sample.position.x, sample.position.y, sample.position.z);
-      this.control.target.set(sample.target.x, sample.target.y, sample.target.z);
-      this.camera.lookAt(this.control.target);
-      this.control._sphericalDelta?.set(0, 0, 0);
-      this.control._panOffset?.set(0, 0, 0);
-      if (sample.done) this._viewReset = null;
-      this._needsRender = true;
-    }
+    this._applyViewReset(frameNow);
 
     // 静态展示模式（display:'static'）冻结传送带/粒子等环境动画，让画面真正静止、可空闲省电；
     // dynamic / showcase 模式行为不变
