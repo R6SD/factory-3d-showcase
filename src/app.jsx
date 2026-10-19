@@ -395,4 +395,4 @@ function AdminPhotos(){
   </Card>;
 }
 
-createRoot(document.querySelector('#app')).render(<ErrorBoundary><Provider><DataProvider><BrowserRouter><Routes><Route path="/admin" element={<AdminApp/>}/><Route path="/*" element={<Shell/>}/></Routes></BrowserRouter></DataProvider></Provider></ErrorBoundary>);
+createRoot(document.querySelector('#app')).render(<ErrorBoundary><Provider><DataProvider><BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}><Routes><Route path="/admin" element={<AdminApp/>}/><Route path="/*" element={<Shell/>}/></Routes></BrowserRouter></DataProvider></Provider></ErrorBoundary>);

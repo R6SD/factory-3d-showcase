@@ -87,6 +87,26 @@ npm run package:win
 
 安装版默认安装到 `D:\工厂 Web3D 工作台`，并生成 `unins000.exe` 用于卸载。
 
+## Web 预览 / GitHub Pages
+
+本地按根路径构建并预览（与桌面端相同，`base` 为 `/`）：
+
+```powershell
+npm run build && npm run preview
+```
+
+默认预览地址：<http://127.0.0.1:4173/>
+
+发布到免费的 GitHub Pages 项目站点时，构建要带上仓库子路径（PowerShell 用 `$env:VITE_BASE="/factory-3d-showcase/"; npm run build`）：
+
+```bash
+VITE_BASE=/factory-3d-showcase/ npm run build
+```
+
+线上地址：<https://r6sd.github.io/factory-3d-showcase/>。推送到 `main` 会自动测试、按该子路径构建并部署（也可在 Actions 里手动运行）。仓库所有者只需设置一次：Settings → Pages → Source 选择 **GitHub Actions**；未开启前第一次部署不会成功。
+
+Web 版没有 Electron 的本地模型文件 API，模型与业务数据改走浏览器存储（IndexedDB / localStorage）。
+
 ## 功能说明
 
 - 导入 GLB、glTF、FBX、OBJ 模型（单文件最大 200 MB），支持拖拽文件到三维场景区域直接导入。
