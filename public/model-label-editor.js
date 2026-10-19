@@ -99,7 +99,6 @@ function mountLabelEditor() {
 
   let labels = readLabels();
   let drag = null;
-  let _raycaster = null, _pointer = null;
   // viewer 的位置/尺寸只在窗口或布局变化时改变，缓存以避免每个标签每帧 getBoundingClientRect 强制回流
   let cachedBounds = null;
   const invalidateBounds = () => { cachedBounds = null; };
@@ -191,15 +190,9 @@ function mountLabelEditor() {
 
   function raycast(event) {
     const model = runtime.getModel();
-    if (!model) return null;
-    if (!_raycaster) { _raycaster = new runtime.THREE.Raycaster(); _pointer = new runtime.THREE.Vector2(); }
-    const bounds = viewer.getBoundingClientRect();
-    _pointer.set(
-      (event.clientX - bounds.left) / bounds.width * 2 - 1,
-      -(event.clientY - bounds.top) / bounds.height * 2 + 1
-    );
-    _raycaster.setFromCamera(_pointer, runtime.camera);
-    const hit = _raycaster.intersectObject(model, true)[0];
+    if (!model || typeof runtime.raycastVisible !== 'function') return null;
+    // 与设备拾取共用：跳过自身或祖先被隐藏的节点
+    const hit = runtime.raycastVisible(event.clientX, event.clientY);
     if (!hit) return null;
     model.updateWorldMatrix(true, false);
     const local = model.worldToLocal(hit.point.clone());

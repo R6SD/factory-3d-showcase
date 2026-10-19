@@ -51,6 +51,11 @@ UI 控件（指南针、FPS、层级、截图等）只经此对象和事件通�
 | `focusNode(uuid)` | 聚焦节点 |
 | `toggleNodeVisible(uuid)` | 切换节点可见性 |
 | `pressBounce(active)` | 按压回弹（窗口对象上已有，文件头未单列） |
+| `setDeviceStatuses(map)` | 按 `userData.equipmentId` 着色。值为状态字符串，或 `{ status, name }`（外载模型可按 id / 中文名绑定）。改色前 clone 材质 |
+| `clearDeviceStatuses()` | 恢复 `_statusOrig`、释放 clone，并清空状态表 |
+| `setEquipmentPickEnabled(bool)` | 开关设备射线拾取，三维页默认开启 |
+| `raycastVisible(clientX, clientY)` | 最近的可见交点。对象或任一祖先 `visible === false` 时跳过；设备拾取、长按和右键标注共用 |
+| `isHierarchyVisible(object)` | 对象及祖先是否都可见。`raycastVisible` 与拾取使用同一判断 |
 
 SceneRuntime 实例上的公共方法（React `Scene` 适配器调用，没有拷贝到 window 对象上）：
 
@@ -77,6 +82,9 @@ ES 模块继续用 `src/events.js` 的 `EVENTS` / `dispatch` / `listen`。public
 | `factory-viewer-title-change` | `VIEWER_TITLE_CHANGE` | `viewer-title-editor.js` | 壳内 Provider |
 | `factory-brand-icon-change` | `BRAND_ICON_CHANGE` | `viewer-title-editor.js` | 壳内 Provider |
 | `factory-photos-changed` | `PHOTOS_CHANGED` | 照片列表刷新（`src/app.jsx`） | `usePhotoList` |
+| `factory-equipment-select` | `EQUIPMENT_SELECT` | SceneRuntime 拾取（命中 `{ id }`，空白或换模型为 `null`）；详情侧栏关闭 | 三维页详情侧栏、SceneRuntime（同步选中高亮，不重复派发） |
+
+外载 GLB 没有预先打标时，`setDeviceStatuses` 会在着色前按节点 `name` 模糊匹配设备 id 或中文名并写入 `userData.equipmentId`。对不上的节点保持原材质。默认工厂场景在 `createFactoryModel` 里已经打标，不依赖名称。状态色只做 `normal` / `alarm` / `down` 三种。
 
 ## Admin 拆分
 

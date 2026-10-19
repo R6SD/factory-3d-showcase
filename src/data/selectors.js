@@ -52,6 +52,33 @@ export function achievementRate(capacity) {
   return Math.round((capacity.output / capacity.planned) * 1000) / 10;
 }
 
+/**
+ * 设备运行状态色。侧栏徽章与场景几何共用这一份，不要在 UI 里另写一套。
+ * normal 翠绿低强度，alarm 琥珀，down 红且略压 albedo。维护态不在本映射里。
+ */
+const EQUIPMENT_STATUS_COLOR = Object.freeze({
+  normal: Object.freeze({ status: 'normal', label: '正常', emissive: '#22c55e', emissiveIntensity: 0.28, albedoScale: 1 }),
+  alarm: Object.freeze({ status: 'alarm', label: '告警', emissive: '#f59e0b', emissiveIntensity: 0.75, albedoScale: 1 }),
+  down: Object.freeze({ status: 'down', label: '停机', emissive: '#ef4444', emissiveIntensity: 0.55, albedoScale: 0.45 }),
+});
+
+/** @returns {{status,label,emissive,emissiveIntensity,albedoScale}|null} */
+export function statusColor(status) {
+  return EQUIPMENT_STATUS_COLOR[status] || null;
+}
+
+/** 设备台账。缺省或没有 devices 时返回空数组。数据可替换为 IoT 订阅。 */
+export function listDevices(business) {
+  const list = business?.devices;
+  return Array.isArray(list) ? list : [];
+}
+
+/** 按 id 取一台设备；没有则 null。 */
+export function getDevice(business, id) {
+  if (id == null || id === '') return null;
+  return listDevices(business).find((device) => device.id === id) || null;
+}
+
 /** 产能数据 → 设备状态环形图数据 */
 export function deviceStatusList(capacity) {
   const c = capacity || {};

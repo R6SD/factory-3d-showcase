@@ -4,6 +4,18 @@ import { EVENTS, dispatch, listen } from '../events.js';
 import { loadModelFile } from './ModelLoader.js';
 import { StereoPipeline, normalizePointer, damp, parallaxEyeOffset, autoSway } from './stereo.js';
 import { parallaxSettled, shouldRenderFrame, shouldUpdateShadow } from './render-policy.js';
+import {
+  bindEquipmentIds,
+  bindEquipmentPick,
+  equipmentIdOf,
+  firstVisibleHit,
+  isEquipmentClick,
+  isHierarchyVisible,
+  normalizeStatusEntry,
+  paintEquipmentStatuses,
+  restoreStatusMaterials,
+} from './device-status.js';
+import { statusColor } from '../data/selectors.js';
 
 /**
  * SceneRuntime — owns the Three.js scene, render loop, and model lifecycle.
@@ -14,6 +26,8 @@ import { parallaxSettled, shouldRenderFrame, shouldUpdateShadow } from './render
  *   renderer, scene, camera, control, grid, hemi, sun, rim, THREE
  *   getModel(), fit(), setView(), screenshot(), getModelInfo()
  *   setDisplayMode(), getFps(), getModelTree(), focusNode(), toggleNodeVisible()
+ *   setDeviceStatuses(map), clearDeviceStatuses(), setEquipmentPickEnabled(bool)
+ *   raycastVisible(clientX, clientY), isHierarchyVisible(object)
  *   updateConfig(sceneConfig), dispose()
  */
 
@@ -161,23 +175,41 @@ export function createFactoryModel() {
   for (let x = -8; x <= 8; x += 2) box(0.06, 0.02, 14, x, 0.03, 0, 0x2a4a70);
   for (let z = -6; z <= 6; z += 2) box(18, 0.02, 0.06, 0, 0.03, z, 0x1a3a5c);
 
-  // Main buildings
-  box(4.5, 2.8, 3.2, -4.2, 0, -2.8, 0x6a7a96, { metalness: 0.4 });
-  box(4.6, 0.15, 3.3, -4.2, 2.8, -2.8, 0x3a7ad8, { metalness: 0.6, roughness: 0.3 });
-  for (let i = 0; i < 3; i++) box(0.6, 0.5, 0.05, -5.5 + i * 1.3, 1.2, -4.42, 0x88c8ff, { emissive: 0x4488cc, emissiveIntensity: 0.2, roughness: 0.2 });
+  const tag = (id, name) => {
+    const group = new THREE.Group();
+    group.name = name;
+    group.userData.equipmentId = id;
+    return group;
+  };
+  const into = (group, mesh) => { group.add(mesh); return mesh; };
+
+  // Main buildings — 组根打 equipmentId，射线命中后向上找到该组
+  const mfg = tag('eq-bldg-mfg', '制造主厂房');
+  into(mfg, box(4.5, 2.8, 3.2, -4.2, 0, -2.8, 0x6a7a96, { metalness: 0.4 }));
+  into(mfg, box(4.6, 0.15, 3.3, -4.2, 2.8, -2.8, 0x3a7ad8, { metalness: 0.6, roughness: 0.3 }));
+  for (let i = 0; i < 3; i++) into(mfg, box(0.6, 0.5, 0.05, -5.5 + i * 1.3, 1.2, -4.42, 0x88c8ff, { emissive: 0x4488cc, emissiveIntensity: 0.2, roughness: 0.2 }));
+  g.add(mfg);
   box(3.8, 2.4, 2.8, -4.2, 0, 3.2, 0x5e6e8a, { metalness: 0.4 });
   box(3.9, 0.12, 2.9, -4.2, 2.4, 3.2, 0x3a7ad8, { metalness: 0.6, roughness: 0.3 });
-  box(3.4, 3.4, 3.6, 3.6, 0, -2.4, 0x72829e, { metalness: 0.4 });
-  box(3.5, 0.15, 3.7, 3.6, 3.4, -2.4, 0x3a7ad8, { metalness: 0.6, roughness: 0.3 });
-  for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) box(0.5, 0.45, 0.05, 2.6 + i * 1.0, 1.0 + j * 1.2, -4.22, 0x88c8ff, { emissive: 0x4488cc, emissiveIntensity: 0.2, roughness: 0.2 });
-  box(2.8, 2.0, 3, 3.8, 0, 3.2, 0x7a8aa6, { metalness: 0.4 });
-  box(2.9, 0.12, 3.1, 3.8, 2.0, 3.2, 0x3a7ad8, { metalness: 0.6, roughness: 0.3 });
+  const lineC = tag('eq-line-c', '总装线 C');
+  into(lineC, box(3.4, 3.4, 3.6, 3.6, 0, -2.4, 0x72829e, { metalness: 0.4 }));
+  into(lineC, box(3.5, 0.15, 3.7, 3.6, 3.4, -2.4, 0x3a7ad8, { metalness: 0.6, roughness: 0.3 }));
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) into(lineC, box(0.5, 0.45, 0.05, 2.6 + i * 1.0, 1.0 + j * 1.2, -4.22, 0x88c8ff, { emissive: 0x4488cc, emissiveIntensity: 0.2, roughness: 0.2 }));
+  g.add(lineC);
+  const pack = tag('eq-bldg-pack', '包装车间');
+  into(pack, box(2.8, 2.0, 3, 3.8, 0, 3.2, 0x7a8aa6, { metalness: 0.4 }));
+  into(pack, box(2.9, 0.12, 3.1, 3.8, 2.0, 3.2, 0x3a7ad8, { metalness: 0.6, roughness: 0.3 }));
+  g.add(pack);
 
   // Silos
-  cyl(0.95, 0.95, 3.4, -7.2, 0, 1.5, 0x5a7a9a, 24, { metalness: 0.5, roughness: 0.4 });
-  cyl(1.0, 1.0, 0.18, -7.2, 3.4, 1.5, 0x8aaacc, 24, { metalness: 0.6, roughness: 0.3 });
-  cyl(0.7, 0.7, 2.8, -7.2, 0, -1.5, 0x5a7a9a, 24, { metalness: 0.5, roughness: 0.4 });
-  cyl(0.75, 0.75, 0.14, -7.2, 2.8, -1.5, 0x8aaacc, 24, { metalness: 0.6, roughness: 0.3 });
+  const siloA = tag('eq-silo-a', '原料仓 A');
+  into(siloA, cyl(0.95, 0.95, 3.4, -7.2, 0, 1.5, 0x5a7a9a, 24, { metalness: 0.5, roughness: 0.4 }));
+  into(siloA, cyl(1.0, 1.0, 0.18, -7.2, 3.4, 1.5, 0x8aaacc, 24, { metalness: 0.6, roughness: 0.3 }));
+  g.add(siloA);
+  const siloB = tag('eq-silo-b', '原料仓 B');
+  into(siloB, cyl(0.7, 0.7, 2.8, -7.2, 0, -1.5, 0x5a7a9a, 24, { metalness: 0.5, roughness: 0.4 }));
+  into(siloB, cyl(0.75, 0.75, 0.14, -7.2, 2.8, -1.5, 0x8aaacc, 24, { metalness: 0.6, roughness: 0.3 }));
+  g.add(siloB);
   box(0.04, 2.5, 0.04, -6.2, 0.3, 1.5, 0x8a9ab0, { metalness: 0.7 });
   for (let i = 0; i < 6; i++) box(0.15, 0.03, 0.04, -6.2, 0.5 + i * 0.4, 1.5, 0x8a9ab0, { metalness: 0.7 });
 
@@ -193,13 +225,15 @@ export function createFactoryModel() {
 
   // Conveyor
   const conv = new THREE.Group();
+  conv.name = '主传送带';
+  conv.userData.equipmentId = 'eq-conveyor';
   conv.position.set(0, 0, 0);
-  box(12.5, 0.15, 0.25, 0, 0.15, -0.95, 0x3a4a66, { metalness: 0.7 });
-  box(12.5, 0.15, 0.25, 0, 0.15, 0.95, 0x3a4a66, { metalness: 0.7 });
+  into(conv, box(12.5, 0.15, 0.25, 0, 0.15, -0.95, 0x3a4a66, { metalness: 0.7 }));
+  into(conv, box(12.5, 0.15, 0.25, 0, 0.15, 0.95, 0x3a4a66, { metalness: 0.7 }));
   for (let i = 0; i < 5; i++) {
     const lx = -5 + i * 2.5;
-    box(0.1, 0.35, 0.1, lx, 0, -0.95, 0x4a5a76, { metalness: 0.6 });
-    box(0.1, 0.35, 0.1, lx, 0, 0.95, 0x4a5a76, { metalness: 0.6 });
+    into(conv, box(0.1, 0.35, 0.1, lx, 0, -0.95, 0x4a5a76, { metalness: 0.6 }));
+    into(conv, box(0.1, 0.35, 0.1, lx, 0, 0.95, 0x4a5a76, { metalness: 0.6 }));
   }
   for (let i = 0; i < 14; i++) {
     const slat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 1.6), mat(0x4a5a78, { metalness: 0.5, roughness: 0.6 }));
@@ -339,6 +373,20 @@ export class SceneRuntime {
     this._tmpUp = new THREE.Vector3();
     this._tmpBasePos = new THREE.Vector3();
 
+    // 设备拾取与状态着色（与双击归位的监听分开登记，便于合并）
+    this._equipmentPickEnabled = true;
+    this._equipDown = null;
+    this._equipmentCatalog = null;
+    this._selectedEquipmentId = null;
+    this._equipRaycaster = null;
+    this._equipPointer = null;
+    this._unbindEquipmentPick = null;
+    this._unsubEquipmentSelect = null;
+    this._onEquipPointerDown = this._onEquipPointerDown.bind(this);
+    this._onEquipPointerUp = this._onEquipPointerUp.bind(this);
+    this._onEquipPointerCancel = this._onEquipPointerCancel.bind(this);
+    this._onEquipmentSelect = this._onEquipmentSelect.bind(this);
+
     // Observers / handlers (bound for removal)
     this._observer = null;
     this._onDragOver = this._onDragOver.bind(this);
@@ -448,6 +496,7 @@ export class SceneRuntime {
     this.stereo = new StereoPipeline(this.renderer);
     this.renderer.domElement.addEventListener('pointermove', this._onPointerMove);
     this.renderer.domElement.addEventListener('pointerleave', this._onPointerLeave);
+    this._bindEquipmentPick();
 
     // Keyboard
     window.addEventListener('keydown', this._onKey);
@@ -822,6 +871,7 @@ export class SceneRuntime {
         }
       });
       if (this.model) {
+        this._dropEquipmentSelection();
         this.exitingModel = this.model;
         this.exitingModel.userData.exitStart = performance.now();
         this.exitingModel.userData.exitScale = this.model.scale.clone();
@@ -847,6 +897,7 @@ export class SceneRuntime {
       this.model.rotation.y = this.model.userData.tRot.y - 2.0;
       this.entranceStart = performance.now();
       this._resetPress();
+      this._applyDeviceStatuses();
       if (this._displayMode !== 'solid') this._applyDisplayMode(this.model);
       this._cb.onModelLoaded?.(file);
       if (!silent) this._cb.onNotice?.(`${file.name} 已载入`);
@@ -866,6 +917,7 @@ export class SceneRuntime {
     this._importSeq++;
     this._cb.onLoading?.(false); // 作废在途导入时一并关闭它可能开启的加载遮罩，避免卡住
     if (this.model) {
+      this._dropEquipmentSelection();
       this.exitingModel = this.model;
       this.exitingModel.userData.exitStart = performance.now();
       this.exitingModel.userData.exitScale = this.model.scale.clone();
@@ -885,6 +937,7 @@ export class SceneRuntime {
     this.model.rotation.y = this.model.userData.tRot.y - 2.0;
     this.entranceStart = performance.now();
     this._resetPress();
+    this._applyDeviceStatuses();
     if (this._displayMode !== 'solid') this._applyDisplayMode(this.model);
   }
 
@@ -1182,6 +1235,120 @@ export class SceneRuntime {
     this._scheduleFrame();
   }
 
+  // ── Equipment pick & status ─────────────────────────────────────
+  // 与轨道双击归位分开：这里只处理左键点击拾取和状态材质。
+
+  setDeviceStatuses(map) {
+    const source = map && typeof map === 'object' ? map : {};
+    this._equipmentCatalog = Object.entries(source)
+      .map(([id, value]) => normalizeStatusEntry(id, value))
+      .filter((device) => device.id && statusColor(device.status));
+    this._applyDeviceStatuses();
+  }
+
+  clearDeviceStatuses() {
+    restoreStatusMaterials(this.model);
+    restoreStatusMaterials(this.exitingModel);
+    this._equipmentCatalog = null;
+    this._selectedEquipmentId = null;
+    this._needsRender = true;
+  }
+
+  setEquipmentPickEnabled(enabled) {
+    this._equipmentPickEnabled = !!enabled;
+  }
+
+  /** 最近的可见交点。隐藏节点（自身或祖先 visible === false）不命中。拾取复用此结果。 */
+  raycastVisible(clientX, clientY) {
+    return this._raycastVisible(clientX, clientY);
+  }
+
+  _bindEquipmentPick() {
+    this._unbindEquipmentPick?.();
+    const el = this.renderer?.domElement;
+    if (!el) return;
+    this._unbindEquipmentPick = bindEquipmentPick(el, {
+      onDown: this._onEquipPointerDown,
+      onUp: this._onEquipPointerUp,
+      onCancel: this._onEquipPointerCancel,
+    });
+    this._unsubEquipmentSelect?.();
+    this._unsubEquipmentSelect = listen(EVENTS.EQUIPMENT_SELECT, this._onEquipmentSelect);
+  }
+
+  _onEquipPointerDown(event) {
+    if (this._equipmentPickEnabled === false) return;
+    if (event.button !== 0) return;
+    this._equipDown = { x: event.clientX, y: event.clientY, button: event.button };
+  }
+
+  _onEquipPointerUp(event) {
+    const down = this._equipDown;
+    this._equipDown = null;
+    if (this._equipmentPickEnabled === false) return;
+    if (!isEquipmentClick(down, { x: event.clientX, y: event.clientY, button: event.button })) return;
+    this._setEquipmentSelection(this._pickEquipmentId(event));
+  }
+
+  _onEquipPointerCancel() {
+    this._equipDown = null;
+  }
+
+  _pickEquipmentId(event) {
+    const hit = this._raycastVisible(event.clientX, event.clientY);
+    return hit ? equipmentIdOf(hit.object) : null;
+  }
+
+  _raycastVisible(clientX, clientY) {
+    const model = this.model;
+    const el = this.renderer?.domElement;
+    if (!model || !el || !this.camera) return null;
+    const rect = el.getBoundingClientRect();
+    if (!(rect.width > 0) || !(rect.height > 0)) return null;
+    if (!this._equipRaycaster) {
+      this._equipRaycaster = new THREE.Raycaster();
+      this._equipPointer = new THREE.Vector2();
+    }
+    this._equipPointer.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    this._equipRaycaster.setFromCamera(this._equipPointer, this.camera);
+    return firstVisibleHit(this._equipRaycaster.intersectObject(model, true));
+  }
+
+  _applyDeviceStatuses() {
+    if (!this.model) return;
+    if (this._equipmentCatalog) bindEquipmentIds(this.model, this._equipmentCatalog);
+    paintEquipmentStatuses(this.model, this._equipmentCatalog || [], this._selectedEquipmentId);
+    this._needsRender = true;
+  }
+
+  /** 换模型前恢复旧材质并清选择。状态表保留，新模型装上后再套色。 */
+  _dropEquipmentSelection() {
+    restoreStatusMaterials(this.model);
+    this._selectedEquipmentId = null;
+    dispatch(EVENTS.EQUIPMENT_SELECT, null);
+  }
+
+  _setEquipmentSelection(id) {
+    const next = id || null;
+    if (next === this._selectedEquipmentId) {
+      dispatch(EVENTS.EQUIPMENT_SELECT, next ? { id: next } : null);
+      return;
+    }
+    this._selectedEquipmentId = next;
+    this._applyDeviceStatuses();
+    dispatch(EVENTS.EQUIPMENT_SELECT, next ? { id: next } : null);
+  }
+
+  _onEquipmentSelect(event) {
+    const id = event.detail?.id || null;
+    if (id === this._selectedEquipmentId) return;
+    this._selectedEquipmentId = id;
+    this._applyDeviceStatuses();
+  }
+
   // ── Runtime exposure (for public scripts) ───────────────────────
 
   _exposeRuntime() {
@@ -1208,6 +1375,11 @@ export class SceneRuntime {
       focusNode: (u) => rt.focusNode(u),
       toggleNodeVisible: (u) => rt.toggleNodeVisible(u),
       pressBounce: (active) => rt.pressBounce(active),
+      setDeviceStatuses: (map) => rt.setDeviceStatuses(map),
+      clearDeviceStatuses: () => rt.clearDeviceStatuses(),
+      setEquipmentPickEnabled: (enabled) => rt.setEquipmentPickEnabled(enabled),
+      raycastVisible: (clientX, clientY) => rt.raycastVisible(clientX, clientY),
+      isHierarchyVisible: (object) => isHierarchyVisible(object),
     };
   }
 
@@ -1224,6 +1396,11 @@ export class SceneRuntime {
     this._root.removeEventListener('drop', this._onDrop);
     this.renderer.domElement.removeEventListener('pointermove', this._onPointerMove);
     this.renderer.domElement.removeEventListener('pointerleave', this._onPointerLeave);
+    this._unbindEquipmentPick?.();
+    this._unbindEquipmentPick = null;
+    this._unsubEquipmentSelect?.();
+    this._unsubEquipmentSelect = null;
+    this.clearDeviceStatuses();
     this._observer?.disconnect();
     cancelAnimationFrame(this._frame);
     this._frame = null;

@@ -555,6 +555,23 @@ button.text.danger-text{color:#ff7a7a}
 
 .admin .drawer{background:rgba(11,24,48,.97);backdrop-filter:blur(10px);top:0;height:100vh;z-index:40}
 
+/* 设备详情侧栏：沿用层级面板 / drawer 的深色卡片，不另起一套皮肤 */
+.device-detail-panel{position:absolute;top:176px;right:16px;left:auto;bottom:auto;z-index:8;width:280px;max-height:calc(100% - 230px);overflow:auto;padding:14px 16px 16px;border-radius:10px;border:1px solid rgba(100,150,220,.25);background:rgba(6,16,34,.92);backdrop-filter:blur(14px);box-shadow:0 12px 36px rgba(0,0,0,.5);color:var(--text);font-family:"Noto Sans SC",sans-serif;animation:slideIn .2s ease}
+.device-detail-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.device-detail-head b{font:600 13px "Noto Sans SC"}
+.device-detail-head button{background:transparent;border:0;color:var(--muted);cursor:pointer;padding:2px;display:flex;border-radius:4px}
+.device-detail-head button:hover{color:var(--text);background:rgba(255,255,255,.06)}
+.device-detail-panel h3{margin:0 0 4px;font:600 18px "Noto Sans SC"}
+.device-detail-line{margin:0 0 10px;color:var(--muted);font-size:12px}
+.device-status-badge{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:999px;border:1px solid color-mix(in srgb,var(--status) 70%,transparent);background:color-mix(in srgb,var(--status) 18%,transparent);color:var(--status);font:600 12px "Noto Sans SC"}
+.device-status-badge::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--status);box-shadow:0 0 8px var(--status)}
+.device-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.device-kpis div{background:rgba(107,159,255,.06);border:1px solid rgba(100,150,220,.15);border-radius:8px;padding:8px}
+.device-kpis dt{color:var(--muted);font-size:11px}
+.device-kpis dd{margin:2px 0 0;font:600 14px "JetBrains Mono",monospace}
+.device-alarm{margin:0;padding:8px 10px;border-radius:8px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);font-size:12px;line-height:1.5}
+.device-alarm.quiet{background:rgba(255,255,255,.04);border-color:rgba(100,150,220,.15);color:var(--muted)}
+
 /* ===== admin 布局修复：搜索栏 / 表单字段 / 表格横向滚动 ===== */
 .card-head{flex-wrap:wrap;gap:10px}
 .card-head .filter{flex:1;min-width:220px;max-width:600px}
