@@ -583,6 +583,7 @@ export class SceneRuntime {
   }
 
   _fit(obj, captureHome = this._captureHome) {
+    this._cancelViewReset();
     const bounds = new THREE.Box3().setFromObject(obj);
     const size = bounds.getSize(new THREE.Vector3());
     const center = bounds.getCenter(new THREE.Vector3());
@@ -1034,6 +1035,8 @@ export class SceneRuntime {
       -((event.clientY - rect.top) / rect.height) * 2 + 1,
     );
     this._pickRaycaster.setFromCamera(this._pickPointer, this.camera);
+    // Raycaster 不看 visible：父组 hidden 时子网格仍是 visible === true，也会被打中。
+    // 从命中物体一直走到根，任一祖先 visible === false 都算空白。
     const hits = this._pickRaycaster.intersectObject(model, true);
     return hits.some((hit) => {
       for (let node = hit.object; node; node = node.parent) {

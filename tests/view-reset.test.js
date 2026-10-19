@@ -157,6 +157,7 @@ describe('进行中的归位动画会被后续视角操作取消', () => {
     ['S 键', (rt) => rt._onKey(key('s'))],
     ['EVENTS.RESET', (rt) => rt._onReset()],
     ['切回默认模型', (rt) => rt._showDefault()],
+    ['fit()', (rt) => rt.fit()],
   ])('%s 之后推进帧，新机位保持不变', (_label, act) => {
     const { rt, mesh } = makeViewRuntime();
     startReset(rt);
@@ -227,6 +228,29 @@ describe('_pointerHitsModel 忽略隐藏几何', () => {
     hidden.add(mesh);
     rt.model.add(hidden);
     rt.model.updateMatrixWorld(true);
+    expect(mesh.visible).toBe(true);
+    expect(rt._pointerHitsModel(event)).toBe(false);
+  });
+
+  it('隐藏的祖先组不算命中：子网格和直接父组都保持 visible', () => {
+    const { rt, mesh, event } = pickRuntime();
+    const inner = new THREE.Group();
+    const outer = new THREE.Group();
+    outer.visible = false;
+    mesh.parent.remove(mesh);
+    inner.add(mesh);
+    outer.add(inner);
+    rt.model.add(outer);
+    rt.model.updateMatrixWorld(true);
+
+    expect(mesh.visible).toBe(true);
+    expect(inner.visible).toBe(true);
+    expect(outer.visible).toBe(false);
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), rt.camera);
+    const raw = raycaster.intersectObject(rt.model, true);
+    expect(raw.some((hit) => hit.object === mesh)).toBe(true);
     expect(rt._pointerHitsModel(event)).toBe(false);
   });
 });
