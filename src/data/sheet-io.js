@@ -1,9 +1,29 @@
+export class SheetReadError extends Error {
+  constructor(code) {
+    super(code === 'load'
+      ? '表格组件加载失败，请刷新页面后重试'
+      : '文件无法解析，请检查格式');
+    this.name = 'SheetReadError';
+    this.code = code;
+  }
+}
+
+export function sheetErrorMessage(err) {
+  return err instanceof SheetReadError ? err.message : '文件无法解析，请检查格式';
+}
+
 async function loadWorkbook() {
-  const mod = await import('exceljs');
-  const ExcelJS = mod.default?.Workbook ? mod.default : mod;
-  const Workbook = ExcelJS.Workbook || ExcelJS.default?.Workbook;
-  if (!Workbook) throw new Error('exceljs Workbook export missing');
-  return Workbook;
+  try {
+    const mod = await import('exceljs');
+    const ExcelJS = mod.default?.Workbook ? mod.default : mod;
+    const Workbook = ExcelJS.Workbook || ExcelJS.default?.Workbook;
+    if (!Workbook) throw new Error('exceljs Workbook export missing');
+    return Workbook;
+  } catch (err) {
+    if (err instanceof SheetReadError) throw err;
+    console.error('[sheet-io] exceljs load failed', err);
+    throw new SheetReadError('load');
+  }
 }
 
 function plainCell(value) {
@@ -122,13 +142,18 @@ export async function readSheet(file) {
   if (isCsv(file)) {
     return rowsFromMatrix(parseCsv(new TextDecoder('utf-8').decode(buffer)));
   }
-  const Workbook = await loadWorkbook();
+  let Workbook;
+  try {
+    Workbook = await loadWorkbook();
+  } catch (err) {
+    if (err instanceof SheetReadError) throw err;
+    throw new SheetReadError('load');
+  }
   const workbook = new Workbook();
   try {
     await workbook.xlsx.load(buffer);
   } catch {
-    // 0-byte or non-zip .xlsx: same empty result callers already show as 未解析到有效行.
-    return [];
+    throw new SheetReadError('parse');
   }
   const sheet = workbook.worksheets[0];
   if (!sheet) return [];
@@ -165,7 +190,7 @@ function triggerDownload(buffer, fileName) {
 
 /** 把行写成 xlsx 并触发浏览器下载（与原先 writeFile 的点击下载一致）。 */
 export function downloadSheet(rows, sheetName, fileName) {
-  loadWorkbook().then((Workbook) => {
+  return loadWorkbook().then((Workbook) => {
     const workbook = new Workbook();
     const sheet = workbook.addWorksheet(sheetName || 'Sheet1');
     const keys = collectKeys(rows);
@@ -183,5 +208,6 @@ export function downloadSheet(rows, sheetName, fileName) {
     triggerDownload(buffer, fileName);
   }).catch((err) => {
     console.error('[sheet-io] download failed', err);
+    throw err instanceof SheetReadError ? err : new SheetReadError('load');
   });
 }

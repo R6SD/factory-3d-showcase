@@ -14,6 +14,6 @@ window.addEventListener('factory-show-default', () => setCurrentModel(DEFAULT_MO
 window.addEventListener('factory-scene-ready', async () => {
   const name = currentModel();
   if (name === DEFAULT_MODEL) return;
-  await window.factoryModelStorage?.waitForSave(name);
+  try { await window.factoryModelStorage?.waitForSave(name); } catch { return; }
   window.setTimeout(() => window.dispatchEvent(new CustomEvent('factory-show-model', { detail: { name, silent: true } })), 0);
 });
