@@ -1,13 +1,18 @@
-import ExcelJS from 'exceljs';
-
-const Workbook = ExcelJS.Workbook || ExcelJS.default?.Workbook;
+async function loadWorkbook() {
+  const mod = await import('exceljs');
+  const ExcelJS = mod.default?.Workbook ? mod.default : mod;
+  const Workbook = ExcelJS.Workbook || ExcelJS.default?.Workbook;
+  if (!Workbook) throw new Error('exceljs Workbook export missing');
+  return Workbook;
+}
 
 function plainCell(value) {
   if (value == null) return '';
   if (value instanceof Date) {
-    const y = value.getFullYear();
-    const m = String(value.getMonth() + 1).padStart(2, '0');
-    const d = String(value.getDate()).padStart(2, '0');
+    // exceljs date cells are UTC midnight; local getters shift the day west of UTC.
+    const y = value.getUTCFullYear();
+    const m = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(value.getUTCDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
   }
   if (typeof value === 'object') {
@@ -86,20 +91,20 @@ function parseCsv(text) {
 }
 
 function worksheetMatrix(worksheet) {
-  const matrix = [];
-  const lastRow = worksheet.actualRowCount || worksheet.rowCount || 0;
   let lastCol = 0;
-  worksheet.eachRow({ includeEmpty: true }, (row) => {
-    const values = row.values || [];
-    if (values.length - 1 > lastCol) lastCol = values.length - 1;
+  const rows = [];
+  // eachRow visits every non-empty row by its own number, including rows after a blank.
+  // actualRowCount is only the count of those rows, so it cannot be used as the last index.
+  worksheet.eachRow((row) => {
+    const width = (row.values?.length || 1) - 1;
+    if (width > lastCol) lastCol = width;
+    rows.push(row);
   });
-  for (let r = 1; r <= lastRow; r++) {
-    const row = worksheet.getRow(r);
+  return rows.map((row) => {
     const line = [];
     for (let c = 1; c <= lastCol; c++) line.push(row.getCell(c).value);
-    matrix.push(line);
-  }
-  return matrix;
+    return line;
+  });
 }
 
 function isCsv(file) {
@@ -117,6 +122,7 @@ export async function readSheet(file) {
   if (isCsv(file)) {
     return rowsFromMatrix(parseCsv(new TextDecoder('utf-8').decode(buffer)));
   }
+  const Workbook = await loadWorkbook();
   const workbook = new Workbook();
   await workbook.xlsx.load(buffer);
   const sheet = workbook.worksheets[0];
@@ -154,19 +160,21 @@ function triggerDownload(buffer, fileName) {
 
 /** 把行写成 xlsx 并触发浏览器下载（与原先 writeFile 的点击下载一致）。 */
 export function downloadSheet(rows, sheetName, fileName) {
-  const workbook = new Workbook();
-  const sheet = workbook.addWorksheet(sheetName || 'Sheet1');
-  const keys = collectKeys(rows);
-  if (keys.length) {
-    sheet.addRow(keys);
-    for (const row of rows) {
-      sheet.addRow(keys.map((key) => {
-        const value = row?.[key];
-        return value == null ? '' : value;
-      }));
+  loadWorkbook().then((Workbook) => {
+    const workbook = new Workbook();
+    const sheet = workbook.addWorksheet(sheetName || 'Sheet1');
+    const keys = collectKeys(rows);
+    if (keys.length) {
+      sheet.addRow(keys);
+      for (const row of rows) {
+        sheet.addRow(keys.map((key) => {
+          const value = row?.[key];
+          return value == null ? '' : value;
+        }));
+      }
     }
-  }
-  workbook.xlsx.writeBuffer().then((buffer) => {
+    return workbook.xlsx.writeBuffer();
+  }).then((buffer) => {
     triggerDownload(buffer, fileName);
   }).catch((err) => {
     console.error('[sheet-io] download failed', err);

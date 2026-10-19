@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import ExcelJS from 'exceljs';
 import { readSheet, downloadSheet } from '../src/data/sheet-io.js';
 
 function csvFile(text, name = 'people.csv') {
@@ -64,6 +65,20 @@ describe('sheet-io', () => {
       { 工号: 'E-1100', 姓名: '示例员工', 产量: 280, 日期: '2026-09-01' },
     ]);
     expect(Object.getPrototypeOf(rows[0])).toBe(null);
+  });
+
+  it('keeps xlsx data rows that follow a blank middle row', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('人员');
+    sheet.getRow(1).values = ['工号', '姓名'];
+    sheet.getRow(3).values = ['E-1', '甲'];
+    sheet.getRow(4).values = ['E-2', '乙'];
+    const buffer = await workbook.xlsx.writeBuffer();
+    const rows = await readSheet(new File([buffer], 'gap.xlsx'));
+    expect(rows).toEqual([
+      { 工号: 'E-1', 姓名: '甲' },
+      { 工号: 'E-2', 姓名: '乙' },
+    ]);
   });
 
   it('reads only the first worksheet', async () => {
