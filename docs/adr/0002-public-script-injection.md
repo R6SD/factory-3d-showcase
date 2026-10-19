@@ -11,3 +11,4 @@
 - 脚本可独立开发和测试，不依赖 React 构建链
 - 事件契约是隐式的，修改需同步所有监听方
 - 脚本在 React 卸载后仍可能持有 DOM 引用，需注意清理
+- 分层、`window.__factorySceneRuntime` 契约、与 `src/events.js` 对照的完整事件表，以及 public 脚本的保留与收编顺序，见 [0004 应用模块边界](0004-app-module-boundaries.md)。本决策（public 脚本经 DOM 事件增强、不进入 React 树）仍然有效。
