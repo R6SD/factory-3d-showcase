@@ -1,7 +1,7 @@
 /**
  * @vitest-environment happy-dom
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import * as THREE from 'three';
 import { createSeedBusiness, normalizeBusiness } from '../src/data/seed.js';
@@ -10,11 +10,13 @@ import { createFactoryModel } from '../src/scene/SceneRuntime.js';
 import { DeviceDetailPanel } from '../src/ui/viewer/DeviceDetailPanel.jsx';
 import {
   EQUIPMENT_PICK_DRAG_PX,
+  EQUIPMENT_CLICK_SETTLE_MS,
   SELECTED_EMISSIVE_GAIN,
   isEquipmentClick,
   isHierarchyVisible,
   firstVisibleHit,
   bindEquipmentPick,
+  createEquipmentPickGate,
   applyMeshStatus,
   clearMeshStatus,
   paintEquipmentStatuses,
@@ -70,6 +72,43 @@ describe('拾取拖拽阈值', () => {
   it('非左键或缺少按下记录不算点击', () => {
     expect(isEquipmentClick({ ...down, button: 2 }, { x: 10, y: 20, button: 2 })).toBe(false);
     expect(isEquipmentClick(null, { x: 10, y: 20, button: 0 })).toBe(false);
+  });
+
+  it('detail > 1 的 pointerup 是双击的第二次，不提交拾取，也不清掉已有选择', () => {
+    vi.useFakeTimers();
+    try {
+      const picks = [];
+      const gate = createEquipmentPickGate();
+      gate.pointerUp({ detail: 1 }, () => picks.push('first-click'));
+      vi.advanceTimersByTime(EQUIPMENT_CLICK_SETTLE_MS - 1);
+      expect(picks).toEqual([]);
+      gate.pointerUp({ detail: 2 }, () => picks.push('blank-null'));
+      vi.advanceTimersByTime(EQUIPMENT_CLICK_SETTLE_MS);
+      expect(picks).toEqual([]);
+
+      gate.pointerUp({ detail: 1 }, () => picks.push('click'));
+      vi.advanceTimersByTime(EQUIPMENT_CLICK_SETTLE_MS);
+      expect(picks).toEqual(['click']);
+      gate.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('下一击的按下取消尚未提交的单击，双击不改变选择', () => {
+    vi.useFakeTimers();
+    try {
+      const picks = [];
+      const gate = createEquipmentPickGate();
+      gate.pointerUp({ detail: 1 }, () => picks.push('a'));
+      gate.cancel();
+      gate.pointerUp({ detail: 2 }, () => picks.push('b'));
+      vi.advanceTimersByTime(EQUIPMENT_CLICK_SETTLE_MS);
+      expect(picks).toEqual([]);
+      gate.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -144,6 +183,28 @@ describe('射线可见性', () => {
     visible.visible = true;
     expect(firstVisibleHit([nearHidden, far])).toBe(far);
     expect(firstVisibleHit([])).toBeNull();
+  });
+
+  it('拾取向上走时跳过 visible === false 的节点，不用它的 equipmentId', () => {
+    const root = new THREE.Group();
+    root.userData.equipmentId = 'eq-root';
+    const hidden = new THREE.Group();
+    hidden.visible = false;
+    hidden.userData.equipmentId = 'eq-hidden';
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial());
+    hidden.add(mesh);
+    root.add(hidden);
+    expect(equipmentIdOf(mesh)).toBe('eq-hidden');
+    expect(equipmentIdOf(mesh, { skipHidden: true })).toBe('eq-root');
+
+    const orphan = new THREE.Group();
+    const hiddenOnly = new THREE.Group();
+    hiddenOnly.visible = false;
+    hiddenOnly.userData.equipmentId = 'eq-hidden';
+    const child = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial());
+    hiddenOnly.add(child);
+    orphan.add(hiddenOnly);
+    expect(equipmentIdOf(child, { skipHidden: true })).toBeNull();
   });
 });
 

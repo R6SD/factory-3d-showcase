@@ -10,6 +10,11 @@ import { statusColor } from '../data/selectors.js';
 
 /** 按下到抬起的位移超过该像素视为拖轨道，不拾取。等于阈值仍算点击。 */
 export const EQUIPMENT_PICK_DRAG_PX = 8;
+/**
+ * 单击提交前的等待。双击会再来一次 pointerdown / detail>1 的 pointerup，
+ * 这段时间内取消尚未提交的拾取，选择状态保持不变。
+ */
+export const EQUIPMENT_CLICK_SETTLE_MS = 600;
 /** 选中时在状态色 emissiveIntensity 上略抬，关闭侧栏后回到状态色本身。 */
 export const SELECTED_EMISSIVE_GAIN = 1.65;
 const ORIG = '_statusOrig';
@@ -46,15 +51,52 @@ export function isEquipmentClick(down, up, threshold = EQUIPMENT_PICK_DRAG_PX) {
   return dx * dx + dy * dy <= threshold * threshold;
 }
 
-/** 从命中网格向上找最近一个带 equipmentId 的祖先（含自身）。 */
-export function equipmentIdOf(object) {
+/**
+ * 从命中网格向上找最近一个带 equipmentId 的祖先（含自身）。
+ * skipHidden：拾取射线向上走时跳过 visible === false 的节点，不采用其 equipmentId。
+ */
+export function equipmentIdOf(object, { skipHidden = false } = {}) {
   let node = object;
   while (node) {
+    if (skipHidden && node.visible === false) {
+      node = node.parent;
+      continue;
+    }
     const id = node.userData?.equipmentId;
     if (id) return id;
     node = node.parent;
   }
   return null;
+}
+
+/**
+ * 双击会连发两次抬起，第二次 detail > 1。
+ * Chrome 的 pointerup.detail 恒为 0，点击次数在紧随的 mouseup 上；规范浏览器则写在 pointerup 上。
+ * 返回的闸门把单击推迟到 settle 窗口结束；第二次点击取消它，不提交选择。
+ */
+export function createEquipmentPickGate(settleMs = EQUIPMENT_CLICK_SETTLE_MS) {
+  let timer = null;
+  const cancel = () => {
+    if (timer != null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+  return {
+    cancel,
+    pointerUp(event, pick) {
+      if (event?.detail > 1) {
+        cancel();
+        return;
+      }
+      cancel();
+      timer = setTimeout(() => {
+        timer = null;
+        pick();
+      }, settleMs);
+    },
+    dispose: cancel,
+  };
 }
 
 /** setDeviceStatuses 的值可以是状态字符串，或 { status, name } 以便按中文名绑定外载模型。 */

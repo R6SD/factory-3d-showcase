@@ -7,6 +7,7 @@ import { parallaxSettled, shouldRenderFrame, shouldUpdateShadow } from './render
 import {
   bindEquipmentIds,
   bindEquipmentPick,
+  createEquipmentPickGate,
   equipmentIdOf,
   firstVisibleHit,
   isEquipmentClick,
@@ -443,9 +444,13 @@ export class SceneRuntime {
     this._equipPointer = null;
     this._unbindEquipmentPick = null;
     this._unsubEquipmentSelect = null;
+    this._equipPickGate = null;
+    this._armedEquipmentPick = null;
+    this._equipMouseUpTarget = null;
     this._onEquipPointerDown = this._onEquipPointerDown.bind(this);
     this._onEquipPointerUp = this._onEquipPointerUp.bind(this);
     this._onEquipPointerCancel = this._onEquipPointerCancel.bind(this);
+    this._onEquipMouseUp = this._onEquipMouseUp.bind(this);
     this._onEquipmentSelect = this._onEquipmentSelect.bind(this);
 
     // Observers / handlers (bound for removal)
@@ -1463,6 +1468,12 @@ export class SceneRuntime {
     this._unbindEquipmentPick?.();
     const el = this.renderer?.domElement;
     if (!el) return;
+    this._equipMouseUpTarget?.removeEventListener('mouseup', this._onEquipMouseUp);
+    this._equipPickGate?.dispose();
+    this._equipPickGate = createEquipmentPickGate();
+    this._armedEquipmentPick = null;
+    el.addEventListener('mouseup', this._onEquipMouseUp);
+    this._equipMouseUpTarget = el;
     this._unbindEquipmentPick = bindEquipmentPick(el, {
       onDown: this._onEquipPointerDown,
       onUp: this._onEquipPointerUp,
@@ -1473,6 +1484,10 @@ export class SceneRuntime {
   }
 
   _onEquipPointerDown(event) {
+    if (event.button === 0) {
+      this._equipPickGate?.cancel();
+      this._armedEquipmentPick = null;
+    }
     if (this._equipmentPickEnabled === false) return;
     if (event.button !== 0) return;
     this._equipDown = { x: event.clientX, y: event.clientY, button: event.button };
@@ -1481,9 +1496,33 @@ export class SceneRuntime {
   _onEquipPointerUp(event) {
     const down = this._equipDown;
     this._equipDown = null;
+    // 双击的第二次抬起 detail > 1：不拾取，也不把空白处当成取消选择。
+    if (event.detail > 1) {
+      this._armedEquipmentPick = null;
+      this._equipPickGate?.pointerUp(event);
+      return;
+    }
     if (this._equipmentPickEnabled === false) return;
     if (!isEquipmentClick(down, { x: event.clientX, y: event.clientY, button: event.button })) return;
-    this._setEquipmentSelection(this._pickEquipmentId(event));
+    const id = this._pickEquipmentId(event);
+    // 符合规范的浏览器在 pointerup.detail 上给出点击次数。Chrome 这里恒为 0，次数在随后的 mouseup 上。
+    if (event.detail > 0) {
+      this._armedEquipmentPick = null;
+      this._equipPickGate?.pointerUp(event, () => this._setEquipmentSelection(id));
+      return;
+    }
+    this._armedEquipmentPick = { id };
+  }
+
+  _onEquipMouseUp(event) {
+    const armed = this._armedEquipmentPick;
+    this._armedEquipmentPick = null;
+    if (!armed || event.button !== 0) return;
+    if (event.detail > 1) {
+      this._equipPickGate?.pointerUp(event);
+      return;
+    }
+    this._equipPickGate?.pointerUp(event, () => this._setEquipmentSelection(armed.id));
   }
 
   _onEquipPointerCancel() {
@@ -1492,7 +1531,7 @@ export class SceneRuntime {
 
   _pickEquipmentId(event) {
     const hit = this._raycastVisible(event.clientX, event.clientY);
-    return hit ? equipmentIdOf(hit.object) : null;
+    return hit ? equipmentIdOf(hit.object, { skipHidden: true }) : null;
   }
 
   _raycastVisible(clientX, clientY) {
@@ -1522,6 +1561,8 @@ export class SceneRuntime {
 
   /** 换模型前恢复旧材质并清选择。状态表保留，新模型装上后再套色。 */
   _dropEquipmentSelection() {
+    this._equipPickGate?.cancel();
+    this._armedEquipmentPick = null;
     restoreStatusMaterials(this.model);
     this._selectedEquipmentId = null;
     dispatch(EVENTS.EQUIPMENT_SELECT, null);
@@ -1598,6 +1639,11 @@ export class SceneRuntime {
     this.renderer.domElement.removeEventListener('pointermove', this._onViewResetPointerMove);
     this.renderer.domElement.removeEventListener('pointerup', this._onViewResetPointerUp);
     this.renderer.domElement.removeEventListener('pointercancel', this._onViewResetPointerCancel);
+    this._equipPickGate?.dispose();
+    this._equipPickGate = null;
+    this._armedEquipmentPick = null;
+    this._equipMouseUpTarget?.removeEventListener('mouseup', this._onEquipMouseUp);
+    this._equipMouseUpTarget = null;
     this._unbindEquipmentPick?.();
     this._unbindEquipmentPick = null;
     this._unsubEquipmentSelect?.();
