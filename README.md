@@ -35,7 +35,7 @@ D:\工厂 Web3D 工作台\unins000.exe
 ### 1. 安装必备软件
 
 - Windows 10/11 64 位
-- [Node.js LTS](https://nodejs.org/)（建议 22 LTS 或更新版本）
+- [Node.js](https://nodejs.org/)：**需要 Node.js 22.12+（推荐 22 LTS）**。低于 22.12 时，`npm install` 可能因 Electron 原生模块重建报 `EBADENGINE`。
 - Git（仅在需要从仓库获取源码时安装）
 
 安装完成后，在 PowerShell 验证：
