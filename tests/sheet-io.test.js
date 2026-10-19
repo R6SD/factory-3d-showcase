@@ -81,15 +81,24 @@ describe('sheet-io', () => {
     ]);
   });
 
-  it('returns no rows for a 0-byte xlsx instead of rejecting', async () => {
-    await expect(readSheet(new File([new Uint8Array(0)], 'empty.xlsx'))).resolves.toEqual([]);
+  it('rejects a 0-byte xlsx as an unreadable file', async () => {
+    const file = new File([new Uint8Array(0)], 'empty.xlsx');
+    await expect(readSheet(file)).rejects.toThrow('文件无法解析，请检查格式');
   });
 
-  it('returns no rows for non-zip bytes named .xlsx instead of rejecting', async () => {
+  it('rejects non-zip bytes named .xlsx as an unreadable file', async () => {
     const file = new File(['not a workbook'], 'notes.xlsx', {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
-    await expect(readSheet(file)).resolves.toEqual([]);
+    await expect(readSheet(file)).rejects.toThrow('文件无法解析，请检查格式');
+  });
+
+  it('returns no rows for a readable workbook that only has a header', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('人员');
+    sheet.getRow(1).values = ['工号', '岗位'];
+    const buffer = await workbook.xlsx.writeBuffer();
+    await expect(readSheet(new File([buffer], 'header.xlsx'))).resolves.toEqual([]);
   });
 
   it('reads only the first worksheet', async () => {

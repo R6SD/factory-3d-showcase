@@ -2,12 +2,21 @@ const DB_NAME = 'factory-model-library';
 const STORE_NAME = 'models';
 const pendingSaves = new Map();
 
+function reportStorageUnavailable() {
+  const detail = '本地模型库不可用，已降级为本次会话';
+  window.__factoryStorageUnavailable = detail;
+  window.dispatchEvent(new CustomEvent('factory-storage-unavailable', { detail }));
+}
 function openDatabase() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE_NAME);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    try {
+      const request = indexedDB.open(DB_NAME, 1);
+      request.onupgradeneeded = () => request.result.createObjectStore(STORE_NAME);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('indexedDB open failed'));
+    } catch (err) {
+      reject(err);
+    }
   });
 }
 async function storeModel(file) {
@@ -16,10 +25,14 @@ async function storeModel(file) {
     const response = await fetch(`/api/models?name=${encodeURIComponent(file.name)}`, { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
     if (response.ok && response.headers.get('X-Factory-Model-Store') === '1') return;
   } catch {}
-  const db = await openDatabase();
-  const tx = db.transaction(STORE_NAME, 'readwrite');
-  tx.objectStore(STORE_NAME).put(file, file.name);
-  await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error); });
+  try {
+    const db = await openDatabase();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).put(file, file.name);
+    await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error); });
+  } catch {
+    reportStorageUnavailable();
+  }
 }
 async function listIndexedModels() {
   const db = await openDatabase();
@@ -61,7 +74,7 @@ window.factoryModelStorage = {
       const response = await fetch('/api/models');
       if (response.ok && response.headers.get('X-Factory-Model-Store') === '1') return await response.json();
     } catch {}
-    try { return await listIndexedModels(); } catch { return []; }
+    try { return await listIndexedModels(); } catch { reportStorageUnavailable(); return []; }
   }
 };
 window.addEventListener('factory-import', (event) => {

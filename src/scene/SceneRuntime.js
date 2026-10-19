@@ -24,7 +24,7 @@ import { statusColor } from '../data/selectors.js';
  *
  * Public interface (also exposed on window.__factorySceneRuntime for public scripts):
  *   renderer, scene, camera, control, grid, hemi, sun, rim, THREE
- *   getModel(), fit(), setView(), screenshot(), getModelInfo()
+ *   getModel(), fit(), setView(), screenshot(), getModelInfo(), getHomeView()
  *   setDisplayMode(), getFps(), getModelTree(), focusNode(), toggleNodeVisible()
  *   setDeviceStatuses(map), clearDeviceStatuses(), setEquipmentPickEnabled(bool)
  *   raycastVisible(clientX, clientY), isHierarchyVisible(object)
@@ -41,6 +41,55 @@ export function stepPressSpring(p, dt, stiffness = 280, damping = 20) {
   p.current += p.velocity * dt;
   p.current = Math.max(-0.15, Math.min(1.15, p.current));
   return p;
+}
+
+/** 双击归位动画时长（毫秒）。缓出，结束时精确落在初始取景。 */
+export const VIEW_RESET_MS = 680;
+/** 触屏两次抬起的最大间隔与位移。超过则视为拖拽旋转，不归位。 */
+export const VIEW_RESET_DOUBLE_TAP_MS = 350;
+export const VIEW_RESET_DOUBLE_TAP_PX = 30;
+
+/** 只有点在空白处才归位，命中模型时把单击留给选中。 */
+export function shouldResetViewOnDoubleActivate({ hitsModel }) {
+  return hitsModel !== true;
+}
+
+/** prev/next 为 { t, x, y }。用于触屏双击（与鼠标 dblclick 同一归位结果）。 */
+export function isViewResetDoubleTap(prev, next) {
+  if (!prev || !next) return false;
+  const dt = next.t - prev.t;
+  if (!(dt > 0) || dt > VIEW_RESET_DOUBLE_TAP_MS) return false;
+  const dx = next.x - prev.x;
+  const dy = next.y - prev.y;
+  return dx * dx + dy * dy <= VIEW_RESET_DOUBLE_TAP_PX * VIEW_RESET_DOUBLE_TAP_PX;
+}
+
+function easeOutCubic(t) {
+  const x = t < 0 ? 0 : t > 1 ? 1 : t;
+  return 1 - (1 - x) ** 3;
+}
+
+/**
+ * 把当前机位插向已记录的初始机位。t 为 0..1 的进度。
+ * 终点就是调用方传入的初始 position/target（来自现有 _fit，不另写取景常数）。
+ * 不修改入参。
+ */
+export function sampleViewReset(fromPos, fromTarget, toPos, toTarget, t) {
+  const done = t >= 1;
+  if (done) {
+    return {
+      position: { x: toPos.x, y: toPos.y, z: toPos.z },
+      target: { x: toTarget.x, y: toTarget.y, z: toTarget.z },
+      done: true,
+    };
+  }
+  const k = easeOutCubic(t);
+  const mix = (a, b) => ({
+    x: a.x + (b.x - a.x) * k,
+    y: a.y + (b.y - a.y) * k,
+    z: a.z + (b.z - a.z) * k,
+  });
+  return { position: mix(fromPos, toPos), target: mix(fromTarget, toTarget), done: false };
 }
 
 /**
@@ -373,6 +422,18 @@ export class SceneRuntime {
     this._tmpUp = new THREE.Vector3();
     this._tmpBasePos = new THREE.Vector3();
 
+    // 双击归位：记下 _fit 写出的初始机位，轨道操作之后平滑回到该值
+    this._captureHome = true;
+    this._homePosition = null;
+    this._homeTarget = null;
+    this._viewReset = null;
+    this._lastTap = null;
+    this._touchDown = null;
+    this._touchIds = new Set();
+    this._touchGesture = null;
+    this._pickRaycaster = null;
+    this._pickPointer = null;
+
     // 设备拾取与状态着色（与双击归位的监听分开登记，便于合并）
     this._equipmentPickEnabled = true;
     this._equipDown = null;
@@ -399,6 +460,11 @@ export class SceneRuntime {
     this._onReset = this._onReset.bind(this);
     this._onPointerMove = this._onPointerMove.bind(this);
     this._onPointerLeave = this._onPointerLeave.bind(this);
+    this._onDblClick = this._onDblClick.bind(this);
+    this._onViewResetPointerDown = this._onViewResetPointerDown.bind(this);
+    this._onViewResetPointerMove = this._onViewResetPointerMove.bind(this);
+    this._onViewResetPointerUp = this._onViewResetPointerUp.bind(this);
+    this._onViewResetPointerCancel = this._onViewResetPointerCancel.bind(this);
 
     this._init();
   }
@@ -496,6 +562,11 @@ export class SceneRuntime {
     this.stereo = new StereoPipeline(this.renderer);
     this.renderer.domElement.addEventListener('pointermove', this._onPointerMove);
     this.renderer.domElement.addEventListener('pointerleave', this._onPointerLeave);
+    this.renderer.domElement.addEventListener('dblclick', this._onDblClick);
+    this.renderer.domElement.addEventListener('pointerdown', this._onViewResetPointerDown);
+    this.renderer.domElement.addEventListener('pointermove', this._onViewResetPointerMove);
+    this.renderer.domElement.addEventListener('pointerup', this._onViewResetPointerUp);
+    this.renderer.domElement.addEventListener('pointercancel', this._onViewResetPointerCancel);
     this._bindEquipmentPick();
 
     // Keyboard
@@ -560,7 +631,7 @@ export class SceneRuntime {
     }
   }
 
-  _fit(obj) {
+  _fit(obj, captureHome = this._captureHome) {
     const bounds = new THREE.Box3().setFromObject(obj);
     const size = bounds.getSize(new THREE.Vector3());
     const center = bounds.getCenter(new THREE.Vector3());
@@ -586,6 +657,7 @@ export class SceneRuntime {
     this._pMat.size = 0.04 * Math.max(1, maxDim / 20);
     this._setupSunForBounds(size, center, maxDim);
     this.control.update();
+    if (captureHome) this._storeHomeFromCamera();
   }
 
   /**
@@ -626,6 +698,7 @@ export class SceneRuntime {
     if (!this._initialFitDone) {
       this._fit(this.model);
       this._initialFitDone = true;
+      this._captureHome = false;
     }
   }
 
@@ -880,7 +953,7 @@ export class SceneRuntime {
       }
       this.scene.add(next);
       this.model = next;
-      this._fit(this.model);
+      this._fit(this.model, true);
       // 模型入场景后再强制遍历一次，确保所有网格（含地面）启用阴影
       next.traverse((o) => {
         if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }
@@ -928,7 +1001,7 @@ export class SceneRuntime {
     const nm = this._factory();
     this.scene.add(nm);
     this.model = nm;
-    this._fit(this.model);
+    this._fit(this.model, true);
     this.model.userData.tScale = this.model.scale.clone();
     this.model.userData.tPos = this.model.position.clone();
     this.model.userData.tRot = this.model.rotation.clone();
@@ -975,6 +1048,112 @@ export class SceneRuntime {
     if (f && /\.(glb|gltf|fbx|obj)$/i.test(f.name)) {
       dispatch(EVENTS.IMPORT, { file: f, silent: false });
     }
+  }
+
+  _storeHomeFromCamera() {
+    if (!this._homePosition) {
+      this._homePosition = new THREE.Vector3();
+      this._homeTarget = new THREE.Vector3();
+    }
+    this._homePosition.copy(this.camera.position);
+    this._homeTarget.copy(this.control.target);
+  }
+
+  getHomeView() {
+    if (!this._homePosition) return null;
+    return {
+      position: { x: this._homePosition.x, y: this._homePosition.y, z: this._homePosition.z },
+      target: { x: this._homeTarget.x, y: this._homeTarget.y, z: this._homeTarget.z },
+    };
+  }
+
+  _pointerHitsModel(event) {
+    const model = this.model;
+    const el = this.renderer?.domElement;
+    if (!model || !el) return false;
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+    if (!this._pickRaycaster) {
+      this._pickRaycaster = new THREE.Raycaster();
+      this._pickPointer = new THREE.Vector2();
+    }
+    this._pickPointer.set(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    this._pickRaycaster.setFromCamera(this._pickPointer, this.camera);
+    // 与设备拾取共用可见性过滤：隐藏节点（含祖先）不算命中，空白处仍可双击归位
+    return !!firstVisibleHit(this._pickRaycaster.intersectObject(model, true));
+  }
+
+  _beginViewReset() {
+    if (!this._homePosition || !this.camera || !this.control) return;
+    this._viewReset = {
+      fromPos: { x: this.camera.position.x, y: this.camera.position.y, z: this.camera.position.z },
+      fromTarget: { x: this.control.target.x, y: this.control.target.y, z: this.control.target.z },
+      toPos: { x: this._homePosition.x, y: this._homePosition.y, z: this._homePosition.z },
+      toTarget: { x: this._homeTarget.x, y: this._homeTarget.y, z: this._homeTarget.z },
+      start: performance.now(),
+      duration: VIEW_RESET_MS,
+    };
+    this.control._sphericalDelta?.set(0, 0, 0);
+    this.control._panOffset?.set(0, 0, 0);
+    this._needsRender = true;
+  }
+
+  _tryViewReset(event) {
+    if (!shouldResetViewOnDoubleActivate({ hitsModel: this._pointerHitsModel(event) })) return;
+    this._beginViewReset();
+  }
+
+  _onDblClick(event) {
+    if (event.button !== 0) return;
+    this._tryViewReset(event);
+  }
+
+  _onViewResetPointerDown(event) {
+    if (event.pointerType !== 'touch') return;
+    this._touchIds.add(event.pointerId);
+    if (this._touchIds.size > 1) this._touchGesture = 'multi';
+    if (this._touchGesture === 'multi') return;
+    this._touchDown = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
+  }
+
+  _onViewResetPointerMove(event) {
+    if (event.pointerType !== 'touch' || !this._touchDown || event.pointerId !== this._touchDown.id) return;
+    if (Math.hypot(event.clientX - this._touchDown.x, event.clientY - this._touchDown.y) > VIEW_RESET_DOUBLE_TAP_PX) {
+      this._touchDown.moved = true;
+    }
+  }
+
+  _onViewResetPointerUp(event) {
+    if (event.pointerType !== 'touch') return;
+    this._touchIds.delete(event.pointerId);
+    const down = this._touchDown;
+    if (down && event.pointerId === down.id) this._touchDown = null;
+    if (this._touchGesture === 'multi') {
+      if (this._touchIds.size === 0) this._touchGesture = null;
+      return;
+    }
+    if (!down || down.moved || Math.hypot(event.clientX - down.x, event.clientY - down.y) > VIEW_RESET_DOUBLE_TAP_PX) {
+      this._lastTap = null;
+      return;
+    }
+    const tap = { t: performance.now(), x: event.clientX, y: event.clientY };
+    if (isViewResetDoubleTap(this._lastTap, tap)) {
+      this._lastTap = null;
+      this._tryViewReset(event);
+    } else {
+      this._lastTap = tap;
+    }
+  }
+
+  _onViewResetPointerCancel(event) {
+    if (event.pointerType !== 'touch') return;
+    this._touchIds.delete(event.pointerId);
+    if (this._touchDown?.id === event.pointerId) this._touchDown = null;
+    this._lastTap = null;
+    if (this._touchIds.size === 0) this._touchGesture = null;
   }
 
   _onPointerMove(e) {
@@ -1038,6 +1217,24 @@ export class SceneRuntime {
     this._lastFrameTime = frameNow;
     this.mixer?.update(dt);
     this.control.update();
+
+    if (this._viewReset) {
+      const t = (performance.now() - this._viewReset.start) / this._viewReset.duration;
+      const sample = sampleViewReset(
+        this._viewReset.fromPos,
+        this._viewReset.fromTarget,
+        this._viewReset.toPos,
+        this._viewReset.toTarget,
+        t,
+      );
+      this.camera.position.set(sample.position.x, sample.position.y, sample.position.z);
+      this.control.target.set(sample.target.x, sample.target.y, sample.target.z);
+      this.camera.lookAt(this.control.target);
+      this.control._sphericalDelta?.set(0, 0, 0);
+      this.control._panOffset?.set(0, 0, 0);
+      if (sample.done) this._viewReset = null;
+      this._needsRender = true;
+    }
 
     // 静态展示模式（display:'static'）冻结传送带/粒子等环境动画，让画面真正静止、可空闲省电；
     // dynamic / showcase 模式行为不变
@@ -1375,6 +1572,7 @@ export class SceneRuntime {
       focusNode: (u) => rt.focusNode(u),
       toggleNodeVisible: (u) => rt.toggleNodeVisible(u),
       pressBounce: (active) => rt.pressBounce(active),
+      getHomeView: () => rt.getHomeView(),
       setDeviceStatuses: (map) => rt.setDeviceStatuses(map),
       clearDeviceStatuses: () => rt.clearDeviceStatuses(),
       setEquipmentPickEnabled: (enabled) => rt.setEquipmentPickEnabled(enabled),
@@ -1396,6 +1594,11 @@ export class SceneRuntime {
     this._root.removeEventListener('drop', this._onDrop);
     this.renderer.domElement.removeEventListener('pointermove', this._onPointerMove);
     this.renderer.domElement.removeEventListener('pointerleave', this._onPointerLeave);
+    this.renderer.domElement.removeEventListener('dblclick', this._onDblClick);
+    this.renderer.domElement.removeEventListener('pointerdown', this._onViewResetPointerDown);
+    this.renderer.domElement.removeEventListener('pointermove', this._onViewResetPointerMove);
+    this.renderer.domElement.removeEventListener('pointerup', this._onViewResetPointerUp);
+    this.renderer.domElement.removeEventListener('pointercancel', this._onViewResetPointerCancel);
     this._unbindEquipmentPick?.();
     this._unbindEquipmentPick = null;
     this._unsubEquipmentSelect?.();

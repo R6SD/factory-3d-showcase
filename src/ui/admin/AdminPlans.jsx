@@ -4,7 +4,7 @@ import { useApp } from '../../app-context.jsx';
 import { buildPlanExportRows, buildPlanRows, applyPlanUpdates, mergePlanImport, parsePlanImport } from '../../data/admin-plans.js';
 import { useBusiness } from '../../data/DataProvider.jsx';
 import { recentMonths } from '../../data/selectors.js';
-import { downloadSheet, readSheet } from '../../data/sheet-io.js';
+import { downloadSheet, readSheet, sheetErrorMessage } from '../../data/sheet-io.js';
 import { Card } from '../shared.jsx';
 
 export function AdminPlans(){
@@ -21,6 +21,7 @@ export function AdminPlans(){
   useEffect(()=>{setDraft(Object.fromEntries(rows.map(r=>[r.ym,r.plan])))},[rows]);
   const set=(ym,v)=>setDraft(s=>({...s,[ym]:v}));
   const save=()=>{patchCollection('monthlyPlans', prev=>applyPlanUpdates(prev,draft,months));setMsg(t.plansSaved);};
+  const saveSheet=(...args)=>downloadSheet(...args).catch(err=>setMsg(sheetErrorMessage(err)));
   const importExcel=async file=>{
     const imported=await readSheet(file).then(parsePlanImport);
     if(!imported.length){setMsg('未解析到有效行：需包含“月份、计划产量”列');return}
@@ -29,7 +30,7 @@ export function AdminPlans(){
   };
   return <Card title={t.plansTitle} action={<button className="primary" onClick={save}>{t.plansSave}</button>}>
     <p className="admin-hint">{t.plansHint}</p>
-    <div className="admin-tools"><button className="secondary" onClick={()=>downloadSheet([{月份:'2026-09',计划产量:2294}],'月度计划','月度计划导入模板.xlsx')}><Download size={14}/>下载导入模板</button><label className="secondary file-btn"><FileSpreadsheet size={14}/>导入 Excel<input type="file" accept=".xlsx,.csv" onChange={e=>{const f=e.target.files?.[0];if(f)importExcel(f);e.target.value=''}}/></label><button className="secondary" onClick={()=>downloadSheet(buildPlanExportRows(records,plans,months),'月度计划','月度计划导出.xlsx')}><Download size={14}/>导出当前</button>{msg&&<small className="admin-msg">{msg}</small>}</div>
+    <div className="admin-tools"><button className="secondary" onClick={()=>saveSheet([{月份:'2026-09',计划产量:2294}],'月度计划','月度计划导入模板.xlsx')}><Download size={14}/>下载导入模板</button><label className="secondary file-btn"><FileSpreadsheet size={14}/>导入 Excel<input type="file" accept=".xlsx,.csv" onChange={e=>{const f=e.target.files?.[0];if(f)importExcel(f).catch(err=>setMsg(sheetErrorMessage(err)));e.target.value=''}}/></label><button className="secondary" onClick={()=>saveSheet(buildPlanExportRows(records,plans,months),'月度计划','月度计划导出.xlsx')}><Download size={14}/>导出当前</button>{msg&&<small className="admin-msg">{msg}</small>}</div>
     <div className="table-scroll"><table className="admin-table plan-table"><thead><tr><th>{t.plansMonth}</th><th>{t.plansActual}</th><th>{t.plansPlan}</th><th>{t.plansAttainment}</th></tr></thead><tbody>{rows.map(r=>{
       const val=draft[r.ym]===undefined?'':draft[r.ym];
       const cls=r.attainment==null?'':r.attainment>=100?'ok':r.attainment>=90?'warn':'low';
