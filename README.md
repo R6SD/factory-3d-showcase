@@ -4,6 +4,11 @@
 
 > 版权：Copyright © 2026 Youhui Wen
 
+## 交付文档
+
+- [发布说明](docs/RELEASE.md)（当前版本 1.4.3）
+- [演示 Checklist](docs/DEMO_CHECKLIST.md)
+
 ## 快速开始
 
 ### 直接使用 Windows 程序（推荐）
