@@ -124,7 +124,12 @@ export async function readSheet(file) {
   }
   const Workbook = await loadWorkbook();
   const workbook = new Workbook();
-  await workbook.xlsx.load(buffer);
+  try {
+    await workbook.xlsx.load(buffer);
+  } catch {
+    // 0-byte or non-zip .xlsx: same empty result callers already show as 未解析到有效行.
+    return [];
+  }
   const sheet = workbook.worksheets[0];
   if (!sheet) return [];
   return rowsFromMatrix(worksheetMatrix(sheet));

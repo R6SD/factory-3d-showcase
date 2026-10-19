@@ -81,6 +81,17 @@ describe('sheet-io', () => {
     ]);
   });
 
+  it('returns no rows for a 0-byte xlsx instead of rejecting', async () => {
+    await expect(readSheet(new File([new Uint8Array(0)], 'empty.xlsx'))).resolves.toEqual([]);
+  });
+
+  it('returns no rows for non-zip bytes named .xlsx instead of rejecting', async () => {
+    const file = new File(['not a workbook'], 'notes.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    await expect(readSheet(file)).resolves.toEqual([]);
+  });
+
   it('reads only the first worksheet', async () => {
     let blob;
     vi.stubGlobal('document', {
