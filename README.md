@@ -1,6 +1,6 @@
 # 工厂 Web3D 工作台
 
-一个纯前端的工厂三维展示与企业工作台。支持本地模型导入、场景与光影调节、可编辑的三维悬浮标签、模型库、组织关系和中英文界面。
+一个纯前端的工厂三维展示与企业工作台。支持本地模型导入、场景与光影调节、可编辑的三维悬浮标签、模型库、组织关系、设置中心和中英文界面。
 
 > 版权：Copyright © 2026 Youhui Wen
 
@@ -35,7 +35,7 @@ D:\工厂 Web3D 工作台\unins000.exe
 ### 1. 安装必备软件
 
 - Windows 10/11 64 位
-- [Node.js LTS](https://nodejs.org/)（建议 22 LTS 或更新版本）
+- [Node.js](https://nodejs.org/)：**需要 Node.js 22.12+（推荐 22 LTS）**。低于 22.12 时，`npm install` 可能因 Electron 原生模块重建报 `EBADENGINE`。
 - Git（仅在需要从仓库获取源码时安装）
 
 安装完成后，在 PowerShell 验证：
@@ -82,12 +82,48 @@ npm run package:win
 
 输出默认位于 `release/`：
 
-- `工厂 Web3D 工作台 Setup 1.1.0.exe`：安装版。
-- `工厂 Web3D 工作台 1.1.0.exe`：免安装版。
+- `工厂 Web3D 工作台 Setup 1.4.3.exe`：安装版。
+- `工厂 Web3D 工作台 1.4.3.exe`：免安装版。
 
 安装版默认安装到 `D:\工厂 Web3D 工作台`，并生成 `unins000.exe` 用于卸载。
 
+## CI
+
+向 `main` 的 pull request 与 push 会运行 `npm test` 与 `npm run build`。
+
+**约定：CI 红不可合并。** 这是团队流程约定，不修改 GitHub 分支保护或仓库设置。
+
+本地对齐：
+
+```powershell
+npm ci && npm test && npm run build
+```
+
+## Web 预览 / GitHub Pages
+
+本地按根路径构建并预览（与桌面端相同，`base` 为 `/`）：
+
+```powershell
+npm run build && npm run preview
+```
+
+默认预览地址：<http://127.0.0.1:4173/>
+
+发布到免费的 GitHub Pages 项目站点时，构建要带上仓库子路径（PowerShell 用 `$env:VITE_BASE="/factory-3d-showcase/"; npm run build`）：
+
+```bash
+VITE_BASE=/factory-3d-showcase/ npm run build
+```
+
+线上地址：<https://r6sd.github.io/factory-3d-showcase/>。推送到 `main` 会自动测试、按该子路径构建并部署（也可在 Actions 里手动运行）。仓库所有者只需设置一次：Settings → Pages → Source 选择 **GitHub Actions**；未开启前第一次部署不会成功。
+
+可直接打开的路由：`/`、`/models`、`/capacity`、`/organization`、`/settings`、`/admin`。
+
+Web 版没有 Electron 的本地模型文件 API，模型与业务数据改走浏览器存储（IndexedDB / localStorage）。照片管理只能在桌面端（Electron）使用；Web / GitHub Pages 构建没有照片的本地回落，`/api/photos` 不可用。
+
 ## 功能说明
+
+展示端侧栏：场地总览（`/`）、模型库（`/models`）、产能看板（`/capacity`）、组织关系（`/organization`）、设置中心（`/settings`）。模型库与设置中心和 `/admin` 对应标签共用同一套页面。人员、场地与组织数据在 `/admin` → **业务数据** 维护。
 
 - 导入 GLB、glTF、FBX、OBJ 模型（单文件最大 200 MB），支持拖拽文件到三维场景区域直接导入。
 - 导入模型会保存到程序指定模型目录，可在模型库中再次展示或删除；切换工作页面和重新启动程序后会自动恢复当前模型。
@@ -96,8 +132,8 @@ npm run package:win
 - 默认工厂场景包含传送带、工业管道、储罐、警示柱、环境粒子与动态照明。
 - 模型轮播：可在设置中心选择多个模型自动轮换展示。
 - 裸眼 3D：运动视差（移动鼠标即有出屏纵深，无需眼镜）、视差屏障、并排立体、红蓝立体五种模式，可在三维页一键切换或在设置中调节视差强度。
-- 产能、场地、人员、组织关系由本地数据层统一管理并持久化（桌面端落盘、浏览器端本地存储），支持人员增删改，可整体替换为 MES/IoT/HR 接口。
-- 设置中心提供中英文、品牌图标、导航和场景配置；配置保存在本机浏览器。
+- 产能看板与组织关系读取本地数据层（桌面端落盘、浏览器端本地存储）。人员、场地与组织数据在 `/admin` → 业务数据 维护，支持人员增删改，可整体替换为 MES/IoT/HR 接口。
+- 设置中心（`/settings`）提供中英文、品牌图标、导航和场景配置；配置保存在本机浏览器。后台 `/admin` 的「设置中心」标签使用同一页面。
 
 ### 键盘快捷键
 
@@ -129,7 +165,7 @@ npm run package:win
 
 ### 后端数据管理
 
-- 从展示端顶部标题栏或访问 `/admin` 进入后端管理页，集中维护业务数据、照片库、模型库与设置中心。
+- 访问 `/admin` 进入后端管理页，集中维护业务数据、照片库、模型库与设置中心。人员、场地与组织数据在「业务数据」中维护。
 - 业务数据分为「人员与组织」「产出记录」「月度计划」三个子标签：
   - 人员与组织、产出记录支持新增/编辑/删除、Excel 导入/导出。
   - 月度计划展示近 6 个月的计划产量、实际产出与达成率，支持逐月直接修改并保存，也支持 Excel 批量导入/导出；达成率 ≥100% 绿色 / ≥90% 黄色 / <90% 红色。

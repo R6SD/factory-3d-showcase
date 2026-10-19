@@ -5,6 +5,9 @@
   "author": "Youhui Wen",
   "copyright": "Copyright © 2026 Youhui Wen",
   "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
@@ -20,13 +23,15 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2",
-    "three": "^0.180.0",
-    "xlsx": "^0.18.5"
+    "exceljs": "^4.4.0",
+    "three": "^0.180.0"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",
     "electron": "^37.2.6",
     "electron-builder": "^26.0.12",
+    "fake-indexeddb": "^6.2.5",
+    "happy-dom": "^20.8.3",
     "vite": "^7.1.7",
     "vitest": "^4.1.11"
   },

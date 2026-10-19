@@ -16,7 +16,29 @@ async function storeModel(file) {
     const response = await fetch(`/api/models?name=${encodeURIComponent(file.name)}`, { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
     if (response.ok && response.headers.get('X-Factory-Model-Store') === '1') return;
   } catch {}
-  try { const db = await openDatabase(); db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).put(file, file.name); } catch {}
+  const db = await openDatabase();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  tx.objectStore(STORE_NAME).put(file, file.name);
+  await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error); });
+}
+async function listIndexedModels() {
+  const db = await openDatabase();
+  const tx = db.transaction(STORE_NAME);
+  const models = [];
+  await new Promise((resolve, reject) => {
+    const request = tx.objectStore(STORE_NAME).openCursor();
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) { resolve(); return; }
+      const file = cursor.value;
+      const name = file?.name || String(cursor.key);
+      const ext = String(name).includes('.') ? String(name).split('.').pop() : '';
+      models.push({ name, format: ext.toUpperCase(), size: file?.size || 0, updated: new Date(file?.lastModified || Date.now()).toLocaleDateString(), tag: '本地导入', available: true });
+      cursor.continue();
+    };
+  });
+  return models;
 }
 async function getModel(name) {
   try {
@@ -39,7 +61,7 @@ window.factoryModelStorage = {
       const response = await fetch('/api/models');
       if (response.ok && response.headers.get('X-Factory-Model-Store') === '1') return await response.json();
     } catch {}
-    return [];
+    try { return await listIndexedModels(); } catch { return []; }
   }
 };
 window.addEventListener('factory-import', (event) => {
