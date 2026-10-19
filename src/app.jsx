@@ -297,7 +297,6 @@ function useAdminModelSync(){
 function AdminApp(){
   const {config}=useApp();
   const [tab,setTab]=useState('business');
-  useAdminModelSync();
   const tabs=[['business',Database,'业务数据'],['photos',ImageIcon,'照片库'],['models',Boxes,'模型库'],['settings',Cog,'设置中心']];
   return <div className={`admin ${config.theme==='light'?'light':''}`}>
     <header className="admin-header"><div className="admin-header-inner"><div className="brand"><Factory/><b>后端数据管理</b></div><nav>{tabs.map(([k,I,label])=><button key={k} className={tab===k?'active':''} onClick={()=>setTab(k)}><I size={15}/>{label}</button>)}</nav><NavLink to="/" className="admin-back"><ArrowLeft size={15}/>返回展示端</NavLink></div></header>
@@ -395,4 +394,5 @@ function AdminPhotos(){
   </Card>;
 }
 
-createRoot(document.querySelector('#app')).render(<ErrorBoundary><Provider><DataProvider><BrowserRouter><Routes><Route path="/admin" element={<AdminApp/>}/><Route path="/*" element={<Shell/>}/></Routes></BrowserRouter></DataProvider></Provider></ErrorBoundary>);
+function RootRoutes(){useAdminModelSync();return <BrowserRouter><Routes><Route path="/admin" element={<AdminApp/>}/><Route path="/*" element={<Shell/>}/></Routes></BrowserRouter>}
+createRoot(document.querySelector('#app')).render(<ErrorBoundary><Provider><DataProvider><RootRoutes/></DataProvider></Provider></ErrorBoundary>);
