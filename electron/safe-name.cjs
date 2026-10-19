@@ -2,7 +2,8 @@
 const path = require('node:path');
 
 function safeModelName(value) {
-  const name = path.basename(String(value || '')).replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim();
+  // POSIX basename 不把 \ 当分隔符；先统一成 /，Windows 路径只保留文件名且不改变 win32 剥离结果。
+  const name = path.basename(String(value || '').replace(/\\/g, '/')).replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim();
   return name && name !== '.' && name !== '..' ? name : null;
 }
 
