@@ -87,6 +87,18 @@ npm run package:win
 
 安装版默认安装到 `D:\工厂 Web3D 工作台`，并生成 `unins000.exe` 用于卸载。
 
+## CI
+
+向 `main` 的 pull request 与 push 会运行 `npm test` 与 `npm run build`。
+
+**约定：CI 红不可合并。** 这是团队流程约定，不修改 GitHub 分支保护或仓库设置。
+
+本地对齐：
+
+```powershell
+npm ci && npm test && npm run build
+```
+
 ## 功能说明
 
 - 导入 GLB、glTF、FBX、OBJ 模型（单文件最大 200 MB），支持拖拽文件到三维场景区域直接导入。
