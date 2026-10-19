@@ -99,6 +99,28 @@ npm run package:win
 npm ci && npm test && npm run build
 ```
 
+## Web 预览 / GitHub Pages
+
+本地按根路径构建并预览（与桌面端相同，`base` 为 `/`）：
+
+```powershell
+npm run build && npm run preview
+```
+
+默认预览地址：<http://127.0.0.1:4173/>
+
+发布到免费的 GitHub Pages 项目站点时，构建要带上仓库子路径（PowerShell 用 `$env:VITE_BASE="/factory-3d-showcase/"; npm run build`）：
+
+```bash
+VITE_BASE=/factory-3d-showcase/ npm run build
+```
+
+线上地址：<https://r6sd.github.io/factory-3d-showcase/>。推送到 `main` 会自动测试、按该子路径构建并部署（也可在 Actions 里手动运行）。仓库所有者只需设置一次：Settings → Pages → Source 选择 **GitHub Actions**；未开启前第一次部署不会成功。
+
+可直接打开的路由：`/`、`/models`、`/capacity`、`/organization`、`/settings`、`/admin`。
+
+Web 版没有 Electron 的本地模型文件 API，模型与业务数据改走浏览器存储（IndexedDB / localStorage）。照片管理只能在桌面端（Electron）使用；Web / GitHub Pages 构建没有照片的本地回落，`/api/photos` 不可用。
+
 ## 功能说明
 
 展示端侧栏：场地总览（`/`）、模型库（`/models`）、产能看板（`/capacity`）、组织关系（`/organization`）、设置中心（`/settings`）。模型库与设置中心和 `/admin` 对应标签共用同一套页面。人员、场地与组织数据在 `/admin` → **业务数据** 维护。

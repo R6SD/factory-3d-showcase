@@ -394,5 +394,5 @@ function AdminPhotos(){
   </Card>;
 }
 
-function RootRoutes(){useAdminModelSync();return <BrowserRouter><Routes><Route path="/admin" element={<AdminApp/>}/><Route path="/*" element={<Shell/>}/></Routes></BrowserRouter>}
+function RootRoutes(){useAdminModelSync();return <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}><Routes><Route path="/admin" element={<AdminApp/>}/><Route path="/*" element={<Shell/>}/></Routes></BrowserRouter>}
 createRoot(document.querySelector('#app')).render(<ErrorBoundary><Provider><DataProvider><RootRoutes/></DataProvider></Provider></ErrorBoundary>);
