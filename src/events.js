@@ -20,6 +20,8 @@ export const EVENTS = Object.freeze({
   BRAND_ICON_CHANGE: 'factory-brand-icon-change',
   // 照片库（ES 模块刷新列表；public 脚本不使用）
   PHOTOS_CHANGED: 'factory-photos-changed',
+  // 设备拾取：detail 为 { id } 或 null（点空白 / 关闭侧栏）
+  EQUIPMENT_SELECT: 'factory-equipment-select',
 });
 
 /** 派发自定义事件 */
