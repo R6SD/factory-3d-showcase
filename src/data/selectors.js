@@ -53,18 +53,56 @@ export function achievementRate(capacity) {
 }
 
 /**
- * 设备运行状态色。侧栏徽章与场景几何共用这一份，不要在 UI 里另写一套。
- * normal 翠绿低强度，alarm 琥珀，down 红且略压 albedo。维护态不在本映射里。
+ * 设备运行状态色。侧栏徽章、统计条与场景几何共用这一份，不要在 UI 里另写一套。
+ * alarm 琥珀，down 红且压 albedo，idle 蓝，normal 翠绿低强度。维护态不在本映射里。
  */
 const EQUIPMENT_STATUS_COLOR = Object.freeze({
-  normal: Object.freeze({ status: 'normal', label: '正常', emissive: '#22c55e', emissiveIntensity: 0.28, albedoScale: 1 }),
-  alarm: Object.freeze({ status: 'alarm', label: '告警', emissive: '#f59e0b', emissiveIntensity: 0.75, albedoScale: 1 }),
-  down: Object.freeze({ status: 'down', label: '停机', emissive: '#ef4444', emissiveIntensity: 0.55, albedoScale: 0.45 }),
+  alarm: Object.freeze({ status: 'alarm', label: '异常', labelEn: 'Alarm', emissive: '#f59e0b', emissiveIntensity: 0.75, albedoScale: 1 }),
+  down: Object.freeze({ status: 'down', label: '离线', labelEn: 'Offline', emissive: '#ef4444', emissiveIntensity: 0.55, albedoScale: 0.45 }),
+  idle: Object.freeze({ status: 'idle', label: '待机', labelEn: 'Idle', emissive: '#60a5fa', emissiveIntensity: 0.3, albedoScale: 0.8 }),
+  normal: Object.freeze({ status: 'normal', label: '运行', labelEn: 'Running', emissive: '#22c55e', emissiveIntensity: 0.28, albedoScale: 1 }),
 });
 
-/** @returns {{status,label,emissive,emissiveIntensity,albedoScale}|null} */
+/** 统计条和列表的固定顺序：异常优先。 */
+export const STATUS_ORDER = ['alarm', 'down', 'idle', 'normal'];
+
+/** @returns {{status,label,labelEn,emissive,emissiveIntensity,albedoScale}|null} */
 export function statusColor(status) {
   return EQUIPMENT_STATUS_COLOR[status] || null;
+}
+
+/** 四态计数。未知状态不计。缺省返回全 0。 */
+export function countByStatus(devices) {
+  const counts = { alarm: 0, down: 0, idle: 0, normal: 0 };
+  if (!Array.isArray(devices)) return counts;
+  for (const device of devices) {
+    const status = device?.status;
+    if (Object.prototype.hasOwnProperty.call(counts, status)) counts[status] += 1;
+  }
+  return counts;
+}
+
+/** status 为 null 时返回原数组；否则只留该状态。 */
+export function filterDevices(devices, status) {
+  const list = Array.isArray(devices) ? devices : [];
+  if (status == null) return list;
+  return list.filter((device) => device?.status === status);
+}
+
+/** 不改原数组。status 按 STATUS_ORDER，相同再按名称；oee 从高到低。 */
+export function sortDevices(devices, key = 'status') {
+  const list = Array.isArray(devices) ? devices.slice() : [];
+  const rank = (status) => {
+    const index = STATUS_ORDER.indexOf(status);
+    return index === -1 ? STATUS_ORDER.length : index;
+  };
+  const byName = (a, b) => String(a?.name || '').localeCompare(String(b?.name || ''), 'zh');
+  list.sort((a, b) => {
+    if (key === 'name') return byName(a, b);
+    if (key === 'oee') return ((Number(b?.kpi?.oee) || 0) - (Number(a?.kpi?.oee) || 0)) || byName(a, b);
+    return (rank(a?.status) - rank(b?.status)) || byName(a, b);
+  });
+  return list;
 }
 
 /** 设备台账。缺省或没有 devices 时返回空数组。数据可替换为 IoT 订阅。 */

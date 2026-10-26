@@ -27,6 +27,7 @@ import { VIEW_RESET_DOUBLE_TAP_PX } from './pointer-slop.js';
  *   getModel(), fit(), setView(), screenshot(), getModelInfo(), getHomeView()
  *   setDisplayMode(), getFps(), getModelTree(), focusNode(), toggleNodeVisible()
  *   setDeviceStatuses(map), clearDeviceStatuses(), setEquipmentPickEnabled(bool)
+ *   equipmentFrame(id), focusEquipment(id), setStatusFilter(status|null)
  *   raycastVisible(clientX, clientY), isHierarchyVisible(object)
  *   updateConfig(sceneConfig), dispose()
  */
@@ -439,6 +440,7 @@ export class SceneRuntime {
     this._equipmentPickEnabled = true;
     this._equipmentCatalog = null;
     this._selectedEquipmentId = null;
+    this._statusFilter = null;
     this._equipRaycaster = null;
     this._equipPointer = null;
     this._unbindEquipmentPick = null;
@@ -1122,19 +1124,24 @@ export class SceneRuntime {
     this._cancelViewReset();
   }
 
-  _beginViewReset() {
-    if (!this._homePosition || !this.camera || !this.control) return;
+  _beginCameraTween(toPos, toTarget, duration = VIEW_RESET_MS) {
+    if (!this.camera || !this.control || !toPos || !toTarget) return;
     this._viewReset = {
       fromPos: { x: this.camera.position.x, y: this.camera.position.y, z: this.camera.position.z },
       fromTarget: { x: this.control.target.x, y: this.control.target.y, z: this.control.target.z },
-      toPos: { x: this._homePosition.x, y: this._homePosition.y, z: this._homePosition.z },
-      toTarget: { x: this._homeTarget.x, y: this._homeTarget.y, z: this._homeTarget.z },
+      toPos: { x: toPos.x, y: toPos.y, z: toPos.z },
+      toTarget: { x: toTarget.x, y: toTarget.y, z: toTarget.z },
       start: performance.now(),
-      duration: VIEW_RESET_MS,
+      duration,
     };
     this.control._sphericalDelta?.set(0, 0, 0);
     this.control._panOffset?.set(0, 0, 0);
     this._needsRender = true;
+  }
+
+  _beginViewReset() {
+    if (!this._homePosition || !this.camera || !this.control) return;
+    this._beginCameraTween(this._homePosition, this._homeTarget);
   }
 
   _tryViewReset(event) {
@@ -1485,6 +1492,7 @@ export class SceneRuntime {
   }
 
   clearDeviceStatuses() {
+    this._statusFilter = null;
     restoreStatusMaterials(this.model);
     restoreStatusMaterials(this.exitingModel);
     this._equipmentCatalog = null;
@@ -1561,12 +1569,58 @@ export class SceneRuntime {
   _applyDeviceStatuses() {
     if (!this.model) return;
     if (this._equipmentCatalog) bindEquipmentIds(this.model, this._equipmentCatalog);
-    paintEquipmentStatuses(this.model, this._equipmentCatalog || [], this._selectedEquipmentId);
+    paintEquipmentStatuses(this.model, this._equipmentCatalog || [], this._selectedEquipmentId, this._statusFilter);
     this._needsRender = true;
   }
 
-  /** 换模型前恢复旧材质并清选择。状态表保留，新模型装上后再套色。 */
+  /**
+   * 可见网格里 equipmentId 命中 id 的并集包围盒。
+   * 取景方向和距离与 focusNode 相同。模型里没有这台设备时返回 null。
+   */
+  equipmentFrame(id) {
+    const model = this.model;
+    if (!model?.traverse || id == null || id === '') return null;
+    const box = new THREE.Box3();
+    let found = false;
+    model.traverse((node) => {
+      if (!node.isMesh || !isHierarchyVisible(node)) return;
+      if (equipmentIdOf(node) !== id) return;
+      const meshBox = new THREE.Box3().setFromObject(node);
+      if (meshBox.isEmpty()) return;
+      if (!found) box.copy(meshBox);
+      else box.union(meshBox);
+      found = true;
+    });
+    if (!found || box.isEmpty()) return null;
+    const size = box.getSize(new THREE.Vector3());
+    const target = box.getCenter(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const dist = maxDim * 2.5;
+    const position = target.clone().addScaledVector(new THREE.Vector3(0.72, 0.52, 0.78).normalize(), dist);
+    return { position, target };
+  }
+
+  /** 缓动到设备。模型里没有时返回 false，不改当前机位。 */
+  focusEquipment(id) {
+    const frame = this.equipmentFrame(id);
+    if (!frame || !this.camera || !this.control) return false;
+    const dist = frame.position.distanceTo(frame.target);
+    this.camera.near = Math.max(0.01, dist / 1200);
+    this.camera.far = Math.max(1000, dist * 80);
+    this.camera.updateProjectionMatrix();
+    this._beginCameraTween(frame.position, frame.target);
+    return true;
+  }
+
+  /** 只高亮该状态；null 恢复全部。接着重刷设备色。 */
+  setStatusFilter(status) {
+    this._statusFilter = status == null ? null : status;
+    this._applyDeviceStatuses();
+  }
+
+  /** 换模型前恢复旧材质并清选择。状态表保留，新模型装上后再套色。过滤一起清掉。 */
   _dropEquipmentSelection() {
+    this._statusFilter = null;
     restoreStatusMaterials(this.model);
     this._selectedEquipmentId = null;
     dispatch(EVENTS.EQUIPMENT_SELECT, null);
@@ -1620,6 +1674,9 @@ export class SceneRuntime {
       setDeviceStatuses: (map) => rt.setDeviceStatuses(map),
       clearDeviceStatuses: () => rt.clearDeviceStatuses(),
       setEquipmentPickEnabled: (enabled) => rt.setEquipmentPickEnabled(enabled),
+      equipmentFrame: (id) => rt.equipmentFrame(id),
+      focusEquipment: (id) => rt.focusEquipment(id),
+      setStatusFilter: (status) => rt.setStatusFilter(status),
       raycastVisible: (clientX, clientY) => rt.raycastVisible(clientX, clientY),
       isHierarchyVisible: (object) => isHierarchyVisible(object),
     };

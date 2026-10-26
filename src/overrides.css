@@ -616,3 +616,34 @@ main{padding:8px}
 .viewer-page .device-detail-panel{left:8px;right:8px;width:auto;top:auto;bottom:250px;max-height:min(40vh,168px)}
 .drawer{width:100%}
 }
+
+/* #41 设备列表与状态统计条。桌面在左上；窄屏沿用 #37 的 1100 / 640 断点。 */
+.device-status-bar{position:absolute;z-index:7;top:76px;left:16px;right:auto;display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:calc(100% - 320px);pointer-events:auto}
+.device-status-bar button{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;border:1px solid rgba(100,150,220,.35);background:rgba(6,16,34,.82);color:#dbe8ff;font:12px "Noto Sans SC",sans-serif;cursor:pointer;white-space:nowrap}
+.device-status-bar button i{width:8px;height:8px;border-radius:50%;background:#93a8c8;flex:none}
+.device-status-bar b{font:600 12px "JetBrains Mono",monospace}
+.device-status-bar.is-filtering .device-status-pill:not([aria-pressed="true"]){opacity:.5}
+.device-list-panel{position:absolute;z-index:7;top:124px;left:16px;width:280px;max-height:calc(100% - 140px);display:flex;flex-direction:column;overflow:hidden;border-radius:10px;border:1px solid rgba(100,150,220,.25);background:rgba(6,16,34,.92);backdrop-filter:blur(14px);box-shadow:0 12px 36px rgba(0,0,0,.5);color:var(--text);font-family:"Noto Sans SC",sans-serif}
+.device-list-sort{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-bottom:1px solid rgba(100,150,220,.2);font:12px "Noto Sans SC";color:var(--muted)}
+.device-list-sort select{background:rgba(18,38,68,.8);color:var(--text);border:1px solid rgba(100,150,220,.35);border-radius:6px;padding:4px 8px;font:12px "Noto Sans SC"}
+.device-list{list-style:none;margin:0;padding:4px;overflow-x:hidden;overflow-y:auto}
+.device-list li{display:grid}
+.device-list button{width:100%;display:grid;grid-template-columns:10px minmax(0,1.4fr) minmax(0,.8fr) auto;gap:8px;align-items:center;text-align:left;background:transparent;border:0;border-left:3px solid transparent;color:inherit;cursor:pointer;padding:8px 10px;font:13px "Noto Sans SC"}
+.device-list button i{width:8px;height:8px;border-radius:50%;background:var(--status,#93a8c8)}
+.device-list-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.device-list-line{color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.device-list-oee{font:600 12px "JetBrains Mono",monospace}
+.device-list button:hover{background:rgba(255,255,255,.08)}
+.device-list button.active{border-left-color:var(--status,#6B9FFF);background:rgba(107,159,255,.14)}
+.device-list-missing{padding:0 10px 6px 28px;color:#f59e0b;font-size:11px}
+.view-actions>button.device-list-toggle.active{border-color:#6B9FFF;color:#fff}
+@media (max-width:1100px){
+.device-status-bar{max-width:calc(100% - 32px)}
+.device-list-panel{width:240px}
+}
+@media (max-width:640px){
+.device-status-bar{top:68px;left:8px;right:8px;max-width:none;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.device-status-bar button{flex:none}
+.viewer-page .device-list-panel{left:0;right:0;top:auto;width:auto;bottom:188px;max-height:min(40vh,calc(100% - 260px));border-radius:12px 12px 0 0}
+.viewer-page .device-detail-panel{z-index:9}
+}

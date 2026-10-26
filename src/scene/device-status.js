@@ -206,14 +206,22 @@ function assignSolid(mesh, material, { pristine = false } = {}) {
   mesh.material = material;
 }
 
+/** 状态过滤时，不匹配的设备网格压暗。未登记网格不套这个。 */
+export const DIM_SPEC = Object.freeze({
+  emissive: '#000000',
+  emissiveIntensity: 0,
+  albedoScale: 0.3,
+});
+
 /**
  * 给单个网格套上状态色。已有备份时先丢掉上一份 clone，再从原材质重新 clone，避免叠乘 albedo。
+ * spec 覆盖状态色（过滤变暗走 DIM_SPEC），clone 和释放仍走 _statusOrig。
  * 线框 / 点云模式下改的是实体材质，显示模式用的临时代质和点云代理保持不动。
- * 返回是否着色。未知状态不改材质。
+ * 返回是否着色。未知状态且没有 spec 时不改材质。
  */
-export function applyMeshStatus(mesh, status, { selected = false } = {}) {
+export function applyMeshStatus(mesh, status, { selected = false, spec: specOverride } = {}) {
   if (!mesh?.isMesh) return false;
-  const spec = statusColor(status);
+  const spec = specOverride || statusColor(status);
   if (!spec) return false;
   const solid = underlyingSolid(mesh);
   const original = mesh.userData[ORIG] || solid;
@@ -249,8 +257,9 @@ export function restoreStatusMaterials(root) {
 /**
  * 先恢复整棵树上的状态材质，再按 equipmentId 重新着色。
  * 只给“最近设备 id 落在 catalog 里”的网格着色，未登记的网格保持原材质。
+ * filter 非空时，状态不匹配的网格套 DIM_SPEC，匹配的照常着色。
  */
-export function paintEquipmentStatuses(root, catalog, selectedId) {
+export function paintEquipmentStatuses(root, catalog, selectedId, filter = null) {
   restoreStatusMaterials(root);
   if (!root?.traverse || !catalog?.length) return;
   const byId = new Map(catalog.map((device) => [device.id, device.status]));
@@ -258,6 +267,11 @@ export function paintEquipmentStatuses(root, catalog, selectedId) {
     if (!node.isMesh) return;
     const id = equipmentIdOf(node);
     if (!id || !byId.has(id)) return;
-    applyMeshStatus(node, byId.get(id), { selected: id === selectedId });
+    const status = byId.get(id);
+    const dimmed = filter != null && status !== filter;
+    applyMeshStatus(node, status, {
+      selected: id === selectedId,
+      spec: dimmed ? DIM_SPEC : undefined,
+    });
   });
 }
