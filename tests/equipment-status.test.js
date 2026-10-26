@@ -174,7 +174,8 @@ describe('拾取 click 守卫', () => {
       _homePosition: new THREE.Vector3(4, 5, 6),
       _homeTarget: new THREE.Vector3(0, 1, 0),
       _lastTap: null,
-      _lastTouchClick: null,
+      _touchClickDouble: false,
+      _touchClickMoved: false,
       _touchDown: null,
       _touchIds: new Set(),
       _touchGesture: null,
@@ -183,28 +184,47 @@ describe('拾取 click 守卫', () => {
     });
     rt._onEquipmentSelect = SceneRuntime.prototype._onEquipmentSelect.bind(rt);
     rt._onViewResetPointerDown = SceneRuntime.prototype._onViewResetPointerDown.bind(rt);
+    rt._onViewResetPointerMove = SceneRuntime.prototype._onViewResetPointerMove.bind(rt);
     rt._onViewResetPointerUp = SceneRuntime.prototype._onViewResetPointerUp.bind(rt);
+    rt._onViewResetPointerCancel = SceneRuntime.prototype._onViewResetPointerCancel.bind(rt);
     rt._bindEquipmentPick();
     el.addEventListener('pointerdown', rt._onViewResetPointerDown);
+    el.addEventListener('pointermove', rt._onViewResetPointerMove);
     el.addEventListener('pointerup', rt._onViewResetPointerUp);
+    el.addEventListener('pointercancel', rt._onViewResetPointerCancel);
     const picked = [];
     const unlisten = listen(EVENTS.EQUIPMENT_SELECT, (event) => picked.push(event.detail?.id ?? null));
     const state = { now: 1000 };
     const clock = vi.spyOn(performance, 'now').mockImplementation(() => state.now);
+    const pointer = (type, { pointerId = 1, x = 0, y = 0 } = {}) => {
+      el.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        pointerType: 'touch',
+        pointerId,
+        button: 0,
+        clientX: x,
+        clientY: y,
+      }));
+    };
     const tap = (x, y) => {
-      const init = { bubbles: true, pointerType: 'touch', pointerId: 1, button: 0, clientX: x, clientY: y };
-      el.dispatchEvent(new PointerEvent('pointerdown', init));
-      el.dispatchEvent(new PointerEvent('pointerup', init));
+      pointer('pointerdown', { x, y });
+      pointer('pointerup', { x, y });
       el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1, button: 0, clientX: x, clientY: y }));
     };
     return {
       rt,
+      el,
       picked,
       tap,
+      pointer,
       state,
       close() {
         clock.mockRestore();
         unlisten();
+        el.removeEventListener('pointerdown', rt._onViewResetPointerDown);
+        el.removeEventListener('pointermove', rt._onViewResetPointerMove);
+        el.removeEventListener('pointerup', rt._onViewResetPointerUp);
+        el.removeEventListener('pointercancel', rt._onViewResetPointerCancel);
         rt._unbindEquipmentPick?.();
         rt._unsubEquipmentSelect?.();
       },
@@ -251,6 +271,69 @@ describe('拾取 click 守卫', () => {
     expect(rt.camera.position.distanceTo(rt._homePosition)).toBeLessThan(1e-4);
     expect(rt.control.target.distanceTo(rt._homeTarget)).toBeLessThan(1e-4);
     scene.close();
+  });
+
+  it('pointercancel 清掉第一下之后，下一次触屏点击不是双击', () => {
+    const scene = mountTouchScene();
+    try {
+      const { rt, picked, tap, pointer, state } = scene;
+      tap(8, 8);
+      expect(picked).toEqual([null]);
+      expect(rt._viewReset).toBeNull();
+
+      state.now = 1200;
+      pointer('pointercancel', { x: 8, y: 8 });
+      tap(8, 8);
+      expect(picked).toEqual([null, null]);
+      expect(rt._viewReset).toBeNull();
+    } finally {
+      scene.close();
+    }
+  });
+
+  it('两次点击之间有多指手势时，后一次不是双击', () => {
+    const scene = mountTouchScene();
+    try {
+      const { rt, picked, tap, pointer, state } = scene;
+      tap(8, 8);
+      expect(picked).toEqual([null]);
+
+      state.now = 1100;
+      pointer('pointerdown', { pointerId: 1, x: 8, y: 8 });
+      pointer('pointerdown', { pointerId: 2, x: 40, y: 40 });
+      pointer('pointerup', { pointerId: 1, x: 8, y: 8 });
+      pointer('pointerup', { pointerId: 2, x: 40, y: 40 });
+
+      state.now = 1300;
+      tap(8, 8);
+      expect(picked).toEqual([null, null]);
+      expect(rt._viewReset).toBeNull();
+    } finally {
+      scene.close();
+    }
+  });
+
+  it('拖出阈值再回到起点不是点击', () => {
+    const scene = mountTouchScene();
+    try {
+      const { rt, picked, tap, pointer, state } = scene;
+      const x = 8;
+      const y = 8;
+      pointer('pointerdown', { x, y });
+      pointer('pointermove', { x: x + VIEW_RESET_DOUBLE_TAP_PX + 1, y });
+      pointer('pointermove', { x, y });
+      pointer('pointerup', { x, y });
+      scene.el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1, button: 0, clientX: x, clientY: y }));
+      expect(picked).toEqual([]);
+      expect(rt._viewReset).toBeNull();
+
+      state.now = 1200;
+      tap(x, y);
+      expect(picked).toEqual([null]);
+      expect(rt._viewReset).toBeNull();
+    } finally {
+      scene.close();
+    }
   });
 });
 
