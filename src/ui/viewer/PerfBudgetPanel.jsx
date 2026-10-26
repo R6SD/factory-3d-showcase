@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { PERF_BUDGET, budgetFooter, budgetLevel, formatBudgetCount } from '../../scene/perf-budget.js';
 
 /** 只读轮询。短于 500ms 会让面板变成变相的常驻渲染驱动，这里保持与原 FPS 面板相同的间隔。 */
@@ -38,6 +39,34 @@ export function PerfBudgetPanel() {
 
   const trisTotal = perf && typeof perf.trisTotal === 'number' ? perf.trisTotal : null;
   const calls = perf && typeof perf.calls === 'number' ? perf.calls : null;
+  // 按钮留在工具条里。工具条有 transform，会变成 absolute 的包含块，
+  // 面板若留在里面，top:82px 会落到视口下面并被 .viewer-page 裁掉。
+  // 挂到 .viewer 上，这条定位才是相对三维区域的左上角。
+  const host = typeof document !== 'undefined' ? document.querySelector('.viewer') : null;
+  const overlay = (
+    <div className="perf-overlay">
+      <Metric
+        metric="fps"
+        label={`帧率 · ≥${PERF_BUDGET.fpsMin}`}
+        text={`${fps} FPS`}
+        level={budgetLevel('fps', fps)}
+      />
+      <Metric
+        metric="tris"
+        label={`三角面（模型总量） · <${formatBudgetCount(PERF_BUDGET.trisWarn)} / <${formatBudgetCount(PERF_BUDGET.trisMax)}`}
+        text={trisTotal == null ? null : String(trisTotal)}
+        level={trisTotal == null ? null : budgetLevel('tris', trisTotal)}
+      />
+      <Metric
+        metric="drawCalls"
+        label={`绘制调用/帧 · <${PERF_BUDGET.drawCallsWarn} / <${PERF_BUDGET.drawCallsMax}`}
+        text={calls == null ? null : String(calls)}
+        level={calls == null ? null : budgetLevel('drawCalls', calls)}
+      />
+      <DiagnosticRows perf={perf} />
+      <div className="perf-row"><span>{budgetFooter()}</span></div>
+    </div>
+  );
 
   return (
     <>
@@ -49,30 +78,7 @@ export function PerfBudgetPanel() {
       >
         性能预算
       </button>
-      {show && (
-        <div className="perf-overlay">
-          <Metric
-            metric="fps"
-            label={`帧率 · ≥${PERF_BUDGET.fpsMin}`}
-            text={`${fps} FPS`}
-            level={budgetLevel('fps', fps)}
-          />
-          <Metric
-            metric="tris"
-            label={`三角面（模型总量） · <${formatBudgetCount(PERF_BUDGET.trisWarn)} / <${formatBudgetCount(PERF_BUDGET.trisMax)}`}
-            text={trisTotal == null ? null : String(trisTotal)}
-            level={trisTotal == null ? null : budgetLevel('tris', trisTotal)}
-          />
-          <Metric
-            metric="drawCalls"
-            label={`绘制调用/帧 · <${PERF_BUDGET.drawCallsWarn} / <${PERF_BUDGET.drawCallsMax}`}
-            text={calls == null ? null : String(calls)}
-            level={calls == null ? null : budgetLevel('drawCalls', calls)}
-          />
-          <DiagnosticRows perf={perf} />
-          <div className="perf-row"><span>{budgetFooter()}</span></div>
-        </div>
-      )}
+      {show && (host ? createPortal(overlay, host) : overlay)}
     </>
   );
 }

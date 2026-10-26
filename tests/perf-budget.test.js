@@ -97,7 +97,7 @@ describe('PerfBudgetPanel', () => {
 
   function mountRuntime(runtime) {
     window.__factorySceneRuntime = runtime;
-    document.body.innerHTML = '<div id="perf-root"></div>';
+    document.body.innerHTML = '<div class="viewer"><div class="view-actions"><div id="perf-root"></div></div></div>';
     root = createRoot(document.getElementById('perf-root'));
     act(() => {
       root.render(createElement(PerfBudgetPanel));
@@ -197,6 +197,10 @@ describe('PerfBudgetPanel', () => {
     act(() => {
       document.querySelector('.perf-toggle').dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
+
+    const overlay = document.querySelector('.perf-overlay');
+    expect(overlay.parentElement.classList.contains('viewer')).toBe(true);
+    expect(overlay.closest('.view-actions')).toBeNull();
 
     const rows = [...document.querySelectorAll('.perf-overlay .perf-row')];
     const labels = rows.map((node) => node.querySelector('span').textContent);
