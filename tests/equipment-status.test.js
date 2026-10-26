@@ -175,8 +175,7 @@ describe('拾取 click 守卫', () => {
       _homeTarget: new THREE.Vector3(0, 1, 0),
       _lastTap: null,
       _touchClickDouble: false,
-      _touchClickMoved: false,
-      _touchDown: null,
+      _pointerDown: null,
       _touchIds: new Set(),
       _touchGesture: null,
       _equipRaycaster: null,
@@ -196,12 +195,13 @@ describe('拾取 click 守卫', () => {
     const unlisten = listen(EVENTS.EQUIPMENT_SELECT, (event) => picked.push(event.detail?.id ?? null));
     const state = { now: 1000 };
     const clock = vi.spyOn(performance, 'now').mockImplementation(() => state.now);
-    const pointer = (type, { pointerId = 1, x = 0, y = 0 } = {}) => {
+    const pointer = (type, { pointerId = 1, x = 0, y = 0, pointerType = 'touch', buttons = 0 } = {}) => {
       el.dispatchEvent(new PointerEvent(type, {
         bubbles: true,
-        pointerType: 'touch',
+        pointerType,
         pointerId,
         button: 0,
+        buttons,
         clientX: x,
         clientY: y,
       }));
@@ -331,6 +331,53 @@ describe('拾取 click 守卫', () => {
       tap(x, y);
       expect(picked).toEqual([null]);
       expect(rt._viewReset).toBeNull();
+    } finally {
+      scene.close();
+    }
+  });
+
+  function clickAt(el, x, y, detail = 1) {
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail, button: 0, clientX: x, clientY: y }));
+  }
+
+  it('鼠标拖出阈值再回到起点不拾取', () => {
+    const scene = mountTouchScene();
+    try {
+      const { picked, pointer } = scene;
+      const x = 100;
+      const y = 100;
+      const mouse = { pointerType: 'mouse' };
+      pointer('pointerdown', { ...mouse, x, y, buttons: 1 });
+      pointer('pointermove', { ...mouse, x: x + 120, y, buttons: 1 });
+      pointer('pointermove', { ...mouse, x, y, buttons: 1 });
+      pointer('pointerup', { ...mouse, x, y });
+      clickAt(scene.el, x, y);
+      expect(picked).toEqual([]);
+      expect(scene.rt._viewReset).toBeNull();
+
+      pointer('pointerdown', { ...mouse, x, y, buttons: 1 });
+      pointer('pointerup', { ...mouse, x, y });
+      clickAt(scene.el, x, y);
+      expect(picked).toEqual(['eq-conveyor']);
+    } finally {
+      scene.close();
+    }
+  });
+
+  it('鼠标在阈值内的小幅抖动仍然拾取', () => {
+    const scene = mountTouchScene();
+    try {
+      const { picked, pointer } = scene;
+      const x = 100;
+      const y = 100;
+      const mouse = { pointerType: 'mouse' };
+      pointer('pointerdown', { ...mouse, x, y, buttons: 1 });
+      pointer('pointermove', { ...mouse, x: x + 12, y, buttons: 1 });
+      pointer('pointermove', { ...mouse, x, y, buttons: 1 });
+      pointer('pointerup', { ...mouse, x, y });
+      clickAt(scene.el, x, y);
+      expect(picked).toEqual(['eq-conveyor']);
+      expect(scene.rt._viewReset).toBeNull();
     } finally {
       scene.close();
     }

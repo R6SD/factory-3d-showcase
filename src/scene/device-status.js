@@ -64,7 +64,7 @@ export function equipmentIdOf(object) {
  * detail > 1、拖过阈值，或触屏第二下被 isTouchDoubleTap 判成双击时，不调用 onSelect。
  * 因此不会改选择，也不会派发 null。dblclick 本身不在这里监听。
  * isTouchDoubleTap 只应在 pointerType 为 touch 时调用 isViewResetDoubleTap。
- * wasDragged 为真表示 pointermove 已经越过阈值（再回到起点也不是点击）。
+ * wasDragged 为真表示这次按下期间 pointermove 已经越过阈值，松手位置无关。
  */
 export function bindEquipmentClickGuard(target, {
   pick,
@@ -84,7 +84,7 @@ export function bindEquipmentClickGuard(target, {
   const onClick = (event) => {
     const start = down;
     down = null;
-    const dragged = start?.pointerType === 'touch' && !!wasDragged?.(start, event);
+    const dragged = !!start && !!wasDragged?.();
     const distancePx = start && !dragged
       ? Math.hypot(event.clientX - start.x, event.clientY - start.y)
       : Infinity;
