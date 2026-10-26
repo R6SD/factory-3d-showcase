@@ -594,10 +594,10 @@ button.text.danger-text{color:#ff7a7a}
 @media (max-width:1100px){
 main{padding:12px}
 .viewer-page{min-height:0;height:calc(100vh - 98px)}
-/* 768 工具栏约 837px，收缩到视口内再换行；够宽时仍按内容宽度居中 */
-.view-actions{width:max-content;max-width:calc(100% - 16px);flex-wrap:wrap;justify-content:center}
-/* 768 下右侧详情和左上性能面板重叠，改成底部抽屉，并抬到两行工具栏之上 */
-.device-detail-panel{left:8px;right:8px;width:auto;top:auto;bottom:140px;max-height:40vh}
+/* 768 工具栏约 837px，收缩到视口内再换行。bottom 用更高优先级，否则会被 style.css 的 38px 盖掉，统计条会压住最下一行按钮 */
+.viewer-page .view-actions{width:max-content;max-width:calc(100% - 16px);flex-wrap:wrap;justify-content:center;bottom:74px}
+/* 768 下右侧详情和左上性能面板重叠，改成底部抽屉，并留在抬高后的工具栏之上 */
+.viewer-page .device-detail-panel{left:8px;right:8px;width:auto;top:auto;bottom:200px;max-height:40vh}
 }
 @media (max-width:640px){
 header{grid-template-columns:auto 1fr auto;padding:0 10px;gap:8px}
@@ -606,12 +606,12 @@ header h1{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellips
 .actions{gap:6px;flex-wrap:wrap;justify-content:flex-end}
 main{padding:8px}
 .viewer-top>div:first-child{min-width:0}
-/* 工具栏：不超出视口，必要时换行 */
-.view-actions{width:max-content;max-width:calc(100% - 16px);flex-wrap:wrap;justify-content:center;bottom:34px}
+/* 工具栏：不超出视口，必要时换行，并整段落在统计条上方 */
+.viewer-page .view-actions{width:max-content;max-width:calc(100% - 16px);flex-wrap:wrap;justify-content:center;bottom:74px}
 /* 性能面板：留在左上，限宽 */
 .perf-overlay{left:8px;top:64px;max-width:calc(100% - 16px)}
 .perf-row{gap:10px}
 /* 详情面板：改为底部抽屉，避免和性能面板重叠 */
-.device-detail-panel{left:8px;right:8px;width:auto;top:auto;bottom:220px;max-height:min(40vh,190px)}
+.viewer-page .device-detail-panel{left:8px;right:8px;width:auto;top:auto;bottom:250px;max-height:min(40vh,168px)}
 .drawer{width:100%}
 }
