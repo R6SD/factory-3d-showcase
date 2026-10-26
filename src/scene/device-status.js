@@ -36,7 +36,7 @@ export function firstVisibleHit(intersections) {
  * 是否把这次 click 当成设备拾取。
  * detail > 1 是双击的第二次，不改变选择，也不当成点空白清掉选择。
  * 位移超过 dragPx 是拖轨道。dragPx 默认就是双击归位的 VIEW_RESET_DOUBLE_TAP_PX。
- * 触屏没有 dblclick，两次点击的 detail 都是 1，这里不另做双击过滤。
+ * 触屏没有 dblclick，两次点击的 detail 都是 1。第二下是否双击由调用方用 isViewResetDoubleTap 判断。
  */
 export function shouldPickEquipmentClick({
   detail = 1,
@@ -61,18 +61,20 @@ export function equipmentIdOf(object) {
 /**
  * 在 click 上拾取。pointer 事件的 detail 按规范恒为 0，不拿来计点击次数。
  * 鼠标双击的顺序是 pointerdown、pointerup、click(detail=1)，再来一轮后是 click(detail=2)、dblclick。
- * detail > 1 或拖过阈值时不调用 onSelect，因此不会改选择，也不会派发 null。
- * dblclick 本身不在这里监听。
+ * detail > 1、拖过阈值，或触屏第二下被 isTouchDoubleTap 判成双击时，不调用 onSelect。
+ * 因此不会改选择，也不会派发 null。dblclick 本身不在这里监听。
+ * isTouchDoubleTap 只应在 pointerType 为 touch 时调用 isViewResetDoubleTap。
  */
 export function bindEquipmentClickGuard(target, {
   pick,
   onSelect,
   dragPx = VIEW_RESET_DOUBLE_TAP_PX,
+  isTouchDoubleTap,
 } = {}) {
   let down = null;
   const onPointerDown = (event) => {
     if (event.button !== 0) return;
-    down = { x: event.clientX, y: event.clientY };
+    down = { x: event.clientX, y: event.clientY, pointerType: event.pointerType };
   };
   const onPointerCancel = () => {
     down = null;
@@ -81,6 +83,7 @@ export function bindEquipmentClickGuard(target, {
     const start = down;
     down = null;
     const distancePx = start ? Math.hypot(event.clientX - start.x, event.clientY - start.y) : Infinity;
+    if (start?.pointerType === 'touch' && isTouchDoubleTap?.(start, event)) return;
     if (!shouldPickEquipmentClick({
       detail: event.detail,
       distancePx,

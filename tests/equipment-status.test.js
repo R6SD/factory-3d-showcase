@@ -1,13 +1,13 @@
 /**
  * @vitest-environment happy-dom
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import * as THREE from 'three';
 import { createSeedBusiness, normalizeBusiness } from '../src/data/seed.js';
 import { getDevice, listDevices, statusColor } from '../src/data/selectors.js';
 import { EVENTS, dispatch, listen } from '../src/events.js';
-import { VIEW_RESET_DOUBLE_TAP_PX, createFactoryModel, setMeshDisplayMode } from '../src/scene/SceneRuntime.js';
+import { VIEW_RESET_DOUBLE_TAP_PX, VIEW_RESET_MS, SceneRuntime, createFactoryModel, setMeshDisplayMode } from '../src/scene/SceneRuntime.js';
 import { DeviceDetailPanel } from '../src/ui/viewer/DeviceDetailPanel.jsx';
 import {
   SELECTED_EMISSIVE_GAIN,
@@ -142,6 +142,80 @@ describe('拾取 click 守卫', () => {
     fire(guard.el, 'click', { detail: 1, x: VIEW_RESET_DOUBLE_TAP_PX, y: 0 });
     expect(guard.selects).toEqual(['eq-conveyor']);
     guard.close();
+  });
+
+  it('触屏单击拾取；双击窗口内第二下只归位，不改选择', () => {
+    const el = document.createElement('canvas');
+    el.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 200, right: 200, bottom: 200 });
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+    camera.position.set(0, 1, 6);
+    camera.lookAt(0, 1, 0);
+    camera.updateMatrixWorld(true);
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshBasicMaterial());
+    mesh.position.set(0, 1, 0);
+    mesh.userData.equipmentId = 'eq-conveyor';
+    const model = new THREE.Group();
+    model.add(mesh);
+    model.updateMatrixWorld(true);
+    const rt = Object.assign(Object.create(SceneRuntime.prototype), {
+      camera,
+      model,
+      renderer: { domElement: el },
+      control: {
+        target: new THREE.Vector3(1, 1, 1),
+        _sphericalDelta: { set() {} },
+        _panOffset: { set() {} },
+      },
+      _equipmentPickEnabled: true,
+      _equipmentCatalog: null,
+      _selectedEquipmentId: null,
+      _viewReset: null,
+      _needsRender: false,
+      _homePosition: new THREE.Vector3(4, 5, 6),
+      _homeTarget: new THREE.Vector3(0, 1, 0),
+      _lastTap: null,
+      _lastTouchClick: null,
+      _touchDown: null,
+      _touchIds: new Set(),
+      _touchGesture: null,
+      _equipRaycaster: null,
+      _equipPointer: null,
+    });
+    rt._onEquipmentSelect = SceneRuntime.prototype._onEquipmentSelect.bind(rt);
+    rt._onViewResetPointerDown = SceneRuntime.prototype._onViewResetPointerDown.bind(rt);
+    rt._onViewResetPointerUp = SceneRuntime.prototype._onViewResetPointerUp.bind(rt);
+    rt._bindEquipmentPick();
+    el.addEventListener('pointerdown', rt._onViewResetPointerDown);
+    el.addEventListener('pointerup', rt._onViewResetPointerUp);
+    const picked = [];
+    const unlisten = listen(EVENTS.EQUIPMENT_SELECT, (event) => picked.push(event.detail?.id ?? null));
+    let now = 1000;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const tap = () => {
+      el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', pointerId: 1, button: 0, clientX: 100, clientY: 100 }));
+      el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', pointerId: 1, button: 0, clientX: 100, clientY: 100 }));
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1, button: 0, clientX: 100, clientY: 100 }));
+    };
+
+    expect(rt._pointerHitsModel({ clientX: 100, clientY: 100 })).toBe(true);
+    tap();
+    expect(picked).toEqual(['eq-conveyor']);
+    expect(rt._selectedEquipmentId).toBe('eq-conveyor');
+    expect(rt._viewReset).toBeNull();
+
+    now = 1200;
+    tap();
+    expect(picked).toEqual(['eq-conveyor']);
+    expect(rt._selectedEquipmentId).toBe('eq-conveyor');
+    expect(rt._viewReset).not.toBeNull();
+    rt._applyViewReset(now + VIEW_RESET_MS);
+    expect(rt.camera.position.distanceTo(rt._homePosition)).toBeLessThan(1e-4);
+    expect(rt.control.target.distanceTo(rt._homeTarget)).toBeLessThan(1e-4);
+
+    clock.mockRestore();
+    unlisten();
+    rt._unbindEquipmentPick?.();
+    rt._unsubEquipmentSelect?.();
   });
 });
 

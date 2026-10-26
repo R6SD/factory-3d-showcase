@@ -428,6 +428,7 @@ export class SceneRuntime {
     this._homeTarget = null;
     this._viewReset = null;
     this._lastTap = null;
+    this._lastTouchClick = null;
     this._touchDown = null;
     this._touchIds = new Set();
     this._touchGesture = null;
@@ -1157,7 +1158,8 @@ export class SceneRuntime {
     const tap = { t: performance.now(), x: event.clientX, y: event.clientY };
     if (isViewResetDoubleTap(this._lastTap, tap)) {
       this._lastTap = null;
-      this._tryViewReset(event);
+      // 触屏双击只归位，不留给第二下拾取。鼠标双击仍走 _tryViewReset，命中模型时不归位。
+      this._beginViewReset();
     } else {
       this._lastTap = tap;
     }
@@ -1472,9 +1474,27 @@ export class SceneRuntime {
         if (this._equipmentPickEnabled === false) return;
         this._setEquipmentSelection(id);
       },
+      isTouchDoubleTap: (down, event) => this._isTouchPickDoubleTap(down, event),
     });
     this._unsubEquipmentSelect?.();
     this._unsubEquipmentSelect = listen(EVENTS.EQUIPMENT_SELECT, this._onEquipmentSelect);
+  }
+
+  /**
+   * 触屏 click.detail 恒为 1。用归位同一套 isViewResetDoubleTap 识别第二下，命中则不拾取。
+   * 拖过 30px 的抬起不算一次点击，并清掉上一次，避免和后面的单击配成双击。
+   */
+  _isTouchPickDoubleTap(down, event) {
+    if (down?.pointerType !== 'touch') return false;
+    const moved = Math.hypot(event.clientX - down.x, event.clientY - down.y);
+    if (moved > VIEW_RESET_DOUBLE_TAP_PX) {
+      this._lastTouchClick = null;
+      return false;
+    }
+    const tap = { t: performance.now(), x: event.clientX, y: event.clientY };
+    const doubleTap = isViewResetDoubleTap(this._lastTouchClick, tap);
+    this._lastTouchClick = doubleTap ? null : tap;
+    return doubleTap;
   }
 
   _pickEquipmentId(event) {
