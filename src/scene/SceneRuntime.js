@@ -708,7 +708,13 @@ export class SceneRuntime {
   fit(obj) { this._fit(obj || this.model); }
   getFps() { return this._currentFps; }
 
-  /** 自上次调用以来的渲染/跳过帧速率与最近一帧绘制调用、三角面（性能面板用） */
+  /**
+   * 自上次调用以来的渲染/跳过帧速率、最近一帧绘制调用与每帧提交三角面。
+   * trisTotal 是模型静态三角面，来自最近一次 getModelInfo() 缓存。
+   * 这里只在 this.model 对象本身换掉时才调用 getModelInfo()。就地往当前模型添加子节点不会在 getPerf 里重算，缓存会一直停在旧的遍历结果。
+   * 三维页 ModelInfoBadge 每 1.5s 调用一次 getModelInfo()，那次调用会刷新这份缓存，所以面板暂时跟得上。
+   * 只读，不标脏、不触发渲染。
+   */
   getPerf() {
     const now = performance.now();
     const dt = Math.max(1, (now - this._lastPerfAt) / 1000);
@@ -717,7 +723,12 @@ export class SceneRuntime {
     this._renderedFrames = 0;
     this._skippedFrames = 0;
     this._lastPerfAt = now;
-    return { rfs, sfs, calls: this._lastCalls, tris: this._lastTris, mode: this.getStereoMode() };
+    let trisTotal = null;
+    if (this.model) {
+      if (this._cachedModelInfoModel !== this.model) this.getModelInfo();
+      trisTotal = this._cachedModelInfo?.tris ?? null;
+    }
+    return { rfs, sfs, calls: this._lastCalls, tris: this._lastTris, trisTotal, mode: this.getStereoMode() };
   }
 
   /**
@@ -780,7 +791,11 @@ export class SceneRuntime {
 
   getModelInfo() {
     const m = this.model;
-    if (!m) return null;
+    if (!m) {
+      this._cachedModelInfo = null;
+      this._cachedModelInfoModel = null;
+      return null;
+    }
     let tris = 0, meshes = 0;
     const mats = new Set();
     m.traverse((o) => {
@@ -792,7 +807,10 @@ export class SceneRuntime {
         else if (o.material) mats.add(o.material.type);
       }
     });
-    return { meshes, tris: Math.round(tris), materials: mats.size };
+    const info = { meshes, tris: Math.round(tris), materials: mats.size };
+    this._cachedModelInfo = info;
+    this._cachedModelInfoModel = m;
+    return info;
   }
 
   /** 把当前显示模式应用到整棵模型树 */
