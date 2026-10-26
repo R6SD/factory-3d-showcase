@@ -46,7 +46,8 @@ UI 控件（指南针、FPS、层级、截图等）只经此对象和事件通�
 | `getModelInfo()` | 网格 / 三角面 / 材质计数 |
 | `setDisplayMode(mode)` | `solid` / `wireframe` / `points` |
 | `getFps()` | 当前帧率 |
-| `getPerf()` | 渲染计数（实际渲染、跳帧、GL 调用、三角面） |
+| `getPerf()` | 渲染计数（实际渲染、跳帧、GL 调用、每帧提交三角面 `tris`、立体模式） |
+| `getPerf().trisTotal` | 当前模型静态三角面，取最近一次 `getModelInfo()` 缓存；模型未加载时为 `null`。预算面板用它，避免和每帧提交的 `tris` 混用 |
 | `getModelTree()` | 模型节点树 |
 | `focusNode(uuid)` | 聚焦节点 |
 | `toggleNodeVisible(uuid)` | 切换节点可见性 |
