@@ -5,18 +5,17 @@ import { loadModelFile } from './ModelLoader.js';
 import { StereoPipeline, normalizePointer, damp, parallaxEyeOffset, autoSway } from './stereo.js';
 import { parallaxSettled, shouldRenderFrame, shouldUpdateShadow } from './render-policy.js';
 import {
+  bindEquipmentClickGuard,
   bindEquipmentIds,
-  bindEquipmentPick,
-  createEquipmentPickGate,
   equipmentIdOf,
   firstVisibleHit,
   isHierarchyVisible,
-  shouldPickEquipmentClick,
   normalizeStatusEntry,
   paintEquipmentStatuses,
   restoreStatusMaterials,
 } from './device-status.js';
 import { statusColor } from '../data/selectors.js';
+import { VIEW_RESET_DOUBLE_TAP_PX } from './pointer-slop.js';
 
 /**
  * SceneRuntime — owns the Three.js scene, render loop, and model lifecycle.
@@ -46,9 +45,9 @@ export function stepPressSpring(p, dt, stiffness = 280, damping = 20) {
 
 /** 双击归位动画时长（毫秒）。缓出，结束时精确落在初始取景。 */
 export const VIEW_RESET_MS = 680;
-/** 触屏两次抬起的最大间隔与位移。超过则视为拖拽旋转，不归位。 */
+/** 触屏两次抬起的最大间隔。超过则不是双击。位移阈值见 VIEW_RESET_DOUBLE_TAP_PX。 */
 export const VIEW_RESET_DOUBLE_TAP_MS = 350;
-export const VIEW_RESET_DOUBLE_TAP_PX = 30;
+export { VIEW_RESET_DOUBLE_TAP_PX };
 
 /** 只有点在空白处才归位，命中模型时把单击留给选中。 */
 export function shouldResetViewOnDoubleActivate({ hitsModel }) {
@@ -437,17 +436,12 @@ export class SceneRuntime {
 
     // 设备拾取与状态着色（与双击归位的监听分开登记，便于合并）
     this._equipmentPickEnabled = true;
-    this._equipDown = null;
     this._equipmentCatalog = null;
     this._selectedEquipmentId = null;
     this._equipRaycaster = null;
     this._equipPointer = null;
     this._unbindEquipmentPick = null;
     this._unsubEquipmentSelect = null;
-    this._equipPickGate = null;
-    this._onEquipPointerDown = this._onEquipPointerDown.bind(this);
-    this._onEquipPointerCancel = this._onEquipPointerCancel.bind(this);
-    this._onEquipClick = this._onEquipClick.bind(this);
     this._onEquipmentSelect = this._onEquipmentSelect.bind(this);
 
     // Observers / handlers (bound for removal)
@@ -1084,7 +1078,8 @@ export class SceneRuntime {
       -((event.clientY - rect.top) / rect.height) * 2 + 1,
     );
     this._pickRaycaster.setFromCamera(this._pickPointer, this.camera);
-    return this._pickRaycaster.intersectObject(model, true).length > 0;
+    // 与设备拾取、右键标注共用 firstVisibleHit：自身或任一祖先 visible === false 则跳过。
+    return firstVisibleHit(this._pickRaycaster.intersectObject(model, true)) != null;
   }
 
   _beginViewReset() {
@@ -1465,52 +1460,24 @@ export class SceneRuntime {
     this._unbindEquipmentPick?.();
     const el = this.renderer?.domElement;
     if (!el) return;
-    this._equipPickGate?.dispose();
-    this._equipPickGate = createEquipmentPickGate();
-    this._unbindEquipmentPick = bindEquipmentPick(el, {
-      onDown: this._onEquipPointerDown,
-      onClick: this._onEquipClick,
-      onCancel: this._onEquipPointerCancel,
+    this._unbindEquipmentPick = bindEquipmentClickGuard(el, {
+      pick: (event) => this._pickEquipmentId(event),
+      onSelect: (id) => {
+        if (this._equipmentPickEnabled === false) return;
+        this._setEquipmentSelection(id);
+      },
+      isDoubleTap: (down, event) => this._isEquipmentDoubleTap(down, event),
     });
     this._unsubEquipmentSelect?.();
     this._unsubEquipmentSelect = listen(EVENTS.EQUIPMENT_SELECT, this._onEquipmentSelect);
   }
 
-  _onEquipPointerDown(event) {
-    if (event.button === 0) this._equipPickGate?.cancel();
-    if (this._equipmentPickEnabled === false) return;
-    if (event.button !== 0) return;
-    this._equipDown = { x: event.clientX, y: event.clientY, t: event.timeStamp, button: event.button };
-  }
-
-  _onEquipClick(event) {
-    const down = this._equipDown;
-    this._equipDown = null;
-    const distancePx = down ? Math.hypot(event.clientX - down.x, event.clientY - down.y) : Infinity;
-    if (!shouldPickEquipmentClick({
-      detail: event.detail,
-      distancePx,
-      isDoubleTap: this._isEquipmentDoubleTap(down, event),
-    })) {
-      this._equipPickGate?.cancel();
-      return;
-    }
-    if (this._equipmentPickEnabled === false) return;
-    if (event.button !== 0) return;
-    const id = this._pickEquipmentId(event);
-    this._equipPickGate?.click(event, () => this._setEquipmentSelection(id));
-  }
-
   /**
    * 触屏没有 dblclick，click.detail 不会到 2。
-   * #23 合入 main 后，用 isViewResetDoubleTap(down, { t, x, y }) 替换这个返回值。不要在此复制该函数。
+   * 调用方把 isViewResetDoubleTap(down, { t, x, y }) 的结果从这里返回。不要在此复制该函数。
    */
   _isEquipmentDoubleTap(_down, _event) {
     return false;
-  }
-
-  _onEquipPointerCancel() {
-    this._equipDown = null;
   }
 
   _pickEquipmentId(event) {
@@ -1545,7 +1512,6 @@ export class SceneRuntime {
 
   /** 换模型前恢复旧材质并清选择。状态表保留，新模型装上后再套色。 */
   _dropEquipmentSelection() {
-    this._equipPickGate?.cancel();
     restoreStatusMaterials(this.model);
     this._selectedEquipmentId = null;
     dispatch(EVENTS.EQUIPMENT_SELECT, null);
@@ -1622,8 +1588,6 @@ export class SceneRuntime {
     this.renderer.domElement.removeEventListener('pointermove', this._onViewResetPointerMove);
     this.renderer.domElement.removeEventListener('pointerup', this._onViewResetPointerUp);
     this.renderer.domElement.removeEventListener('pointercancel', this._onViewResetPointerCancel);
-    this._equipPickGate?.dispose();
-    this._equipPickGate = null;
     this._unbindEquipmentPick?.();
     this._unbindEquipmentPick = null;
     this._unsubEquipmentSelect?.();

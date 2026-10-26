@@ -7,17 +7,8 @@
  * 射线命中必须忽略自身或任一祖先 visible === false 的节点，拾取复用 firstVisibleHit。
  */
 import { statusColor } from '../data/selectors.js';
+import { VIEW_RESET_DOUBLE_TAP_PX } from './pointer-slop.js';
 
-/**
- * 按下到 click 的位移超过该像素视为拖轨道。拖轨道也会冒出 click，不拾取。
- * 与双击归位的触屏双击位移同为 30px；等于阈值仍算点击。
- */
-export const EQUIPMENT_PICK_DRAG_PX = 30;
-/**
- * 单击提交前的等待。双击的第二次 click（detail > 1）会在这段时间内到来，
- * 取消尚未提交的拾取，侧栏不会闪一下。
- */
-export const EQUIPMENT_CLICK_SETTLE_MS = 600;
 /** 选中时在状态色 emissiveIntensity 上略抬，关闭侧栏后回到状态色本身。 */
 export const SELECTED_EMISSIVE_GAIN = 1.65;
 const ORIG = '_statusOrig';
@@ -43,14 +34,15 @@ export function firstVisibleHit(intersections) {
 
 /**
  * 是否把这次 click 当成设备拾取。
- * detail > 1 是双击的第二次，不改变选择。位移超过 dragPx 是拖轨道。
+ * detail > 1 是双击的第二次，不改变选择，也不当成点空白清掉选择。
+ * 位移超过 dragPx 是拖轨道。dragPx 默认就是双击归位的 VIEW_RESET_DOUBLE_TAP_PX。
  * isDoubleTap 留给触屏：触屏没有 dblclick，click.detail 不会变成 2。
- * #23 的 isViewResetDoubleTap 尚未作为依赖接入，合入后把判定结果传给 isDoubleTap。
+ * isViewResetDoubleTap 不在这里复制，调用方把判定结果传给 isDoubleTap。
  */
 export function shouldPickEquipmentClick({
   detail = 1,
   distancePx = 0,
-  dragPx = EQUIPMENT_PICK_DRAG_PX,
+  dragPx = VIEW_RESET_DOUBLE_TAP_PX,
   isDoubleTap = false,
 } = {}) {
   if (isDoubleTap) return false;
@@ -77,30 +69,45 @@ export function equipmentIdOf(object, { skipHidden = false } = {}) {
 }
 
 /**
- * 把单击推迟到 settle 窗口结束。click.detail > 1 时取消，不调用 pick。
+ * 在 click 上拾取。pointer 事件的 detail 按规范恒为 0，不拿来计点击次数。
+ * 鼠标双击的顺序是 pointerdown、pointerup、click(detail=1)，再来一轮后是 click(detail=2)、dblclick。
+ * detail > 1、拖过阈值、或 isDoubleTap 时不调用 onSelect，因此不会改选择，也不会派发 null。
+ * dblclick 本身不在这里监听。
  */
-export function createEquipmentPickGate(settleMs = EQUIPMENT_CLICK_SETTLE_MS) {
-  let timer = null;
-  const cancel = () => {
-    if (timer != null) {
-      clearTimeout(timer);
-      timer = null;
-    }
+export function bindEquipmentClickGuard(target, {
+  pick,
+  onSelect,
+  isDoubleTap = () => false,
+  dragPx = VIEW_RESET_DOUBLE_TAP_PX,
+} = {}) {
+  let down = null;
+  const onPointerDown = (event) => {
+    if (event.button !== 0) return;
+    down = { x: event.clientX, y: event.clientY, t: event.timeStamp, button: event.button };
   };
-  return {
-    cancel,
-    click(event, pick) {
-      if (event?.detail > 1) {
-        cancel();
-        return;
-      }
-      cancel();
-      timer = setTimeout(() => {
-        timer = null;
-        pick();
-      }, settleMs);
-    },
-    dispose: cancel,
+  const onPointerCancel = () => {
+    down = null;
+  };
+  const onClick = (event) => {
+    const start = down;
+    down = null;
+    const distancePx = start ? Math.hypot(event.clientX - start.x, event.clientY - start.y) : Infinity;
+    if (!shouldPickEquipmentClick({
+      detail: event.detail,
+      distancePx,
+      dragPx,
+      isDoubleTap: isDoubleTap(start, event),
+    })) return;
+    if (event.button !== 0) return;
+    onSelect(pick(event));
+  };
+  target.addEventListener('pointerdown', onPointerDown);
+  target.addEventListener('pointercancel', onPointerCancel);
+  target.addEventListener('click', onClick);
+  return () => {
+    target.removeEventListener('pointerdown', onPointerDown);
+    target.removeEventListener('pointercancel', onPointerCancel);
+    target.removeEventListener('click', onClick);
   };
 }
 
@@ -168,30 +175,71 @@ function tintMaterial(material, spec, selected) {
   }
 }
 
+/** 线框时实体色在 origMat，mesh.material 是线框临时代质。点云时实体色在 origMat。 */
+function underlyingSolid(mesh) {
+  if (mesh.userData._pointsProxy && mesh.userData.origMat) return mesh.userData.origMat;
+  if (mesh.userData.origMat && mesh.material !== mesh.userData.origMat) return mesh.userData.origMat;
+  return mesh.material;
+}
+
+/**
+ * 把实体材质写回去，保留当前显示模式。
+ * 线框：不动线框材质，只换 origMat。
+ * 点云：代理留着。还原到共享原材质时另做一份隐藏副本，避免把 visible=false 写进共享材质。
+ */
+function assignSolid(mesh, material, { pristine = false } = {}) {
+  if (mesh.userData._pointsProxy) {
+    const standIn = mesh.material && mesh.material !== mesh.userData.origMat ? mesh.material : null;
+    if (pristine) {
+      const hidden = cloneMaterial(material);
+      for (const item of materialsOf(hidden)) if (item) item.visible = false;
+      mesh.userData.origMat = material;
+      mesh.material = hidden;
+    } else {
+      for (const item of materialsOf(material)) if (item) item.visible = false;
+      mesh.userData.origMat = material;
+      mesh.material = material;
+    }
+    if (standIn && standIn !== mesh.material) disposeClones(standIn, material);
+    return;
+  }
+  if (mesh.userData.origMat && mesh.material !== mesh.userData.origMat) {
+    mesh.userData.origMat = material;
+    return;
+  }
+  mesh.material = material;
+}
+
 /**
  * 给单个网格套上状态色。已有备份时先丢掉上一份 clone，再从原材质重新 clone，避免叠乘 albedo。
+ * 线框 / 点云模式下改的是实体材质，显示模式用的临时代质和点云代理保持不动。
  * 返回是否着色。未知状态不改材质。
  */
 export function applyMeshStatus(mesh, status, { selected = false } = {}) {
   if (!mesh?.isMesh) return false;
   const spec = statusColor(status);
   if (!spec) return false;
-  const original = mesh.userData[ORIG] || mesh.material;
-  if (mesh.userData[ORIG]) disposeClones(mesh.material, original);
+  const solid = underlyingSolid(mesh);
+  const original = mesh.userData[ORIG] || solid;
+  if (mesh.userData[ORIG]) disposeClones(solid, original);
   mesh.userData[ORIG] = original;
-  mesh.material = cloneMaterial(original);
-  for (const material of materialsOf(mesh.material)) tintMaterial(material, spec, selected);
+  const next = cloneMaterial(original);
+  for (const material of materialsOf(next)) {
+    if (material) material.visible = true;
+    tintMaterial(material, spec, selected);
+  }
+  assignSolid(mesh, next);
   return true;
 }
 
-/** 恢复 _statusOrig 并释放 clone。没有备份时不动。 */
+/** 恢复 _statusOrig 并释放 clone。没有备份时不动。线框材质和点云代理不释放。 */
 export function clearMeshStatus(mesh) {
   if (!mesh?.isMesh || !mesh.userData?.[ORIG]) return false;
   const original = mesh.userData[ORIG];
-  const current = mesh.material;
-  mesh.material = original;
+  const solid = underlyingSolid(mesh);
   delete mesh.userData[ORIG];
-  disposeClones(current, original);
+  assignSolid(mesh, original, { pristine: true });
+  disposeClones(solid, original);
   return true;
 }
 

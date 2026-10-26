@@ -1,22 +1,21 @@
 /**
  * @vitest-environment happy-dom
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import * as THREE from 'three';
 import { createSeedBusiness, normalizeBusiness } from '../src/data/seed.js';
 import { getDevice, listDevices, statusColor } from '../src/data/selectors.js';
-import { createFactoryModel } from '../src/scene/SceneRuntime.js';
+import { EVENTS, dispatch, listen } from '../src/events.js';
+import { VIEW_RESET_DOUBLE_TAP_PX, createFactoryModel, setMeshDisplayMode } from '../src/scene/SceneRuntime.js';
 import { DeviceDetailPanel } from '../src/ui/viewer/DeviceDetailPanel.jsx';
 import {
-  EQUIPMENT_PICK_DRAG_PX,
-  EQUIPMENT_CLICK_SETTLE_MS,
   SELECTED_EMISSIVE_GAIN,
   shouldPickEquipmentClick,
   isHierarchyVisible,
   firstVisibleHit,
   bindEquipmentPick,
-  createEquipmentPickGate,
+  bindEquipmentClickGuard,
   applyMeshStatus,
   clearMeshStatus,
   paintEquipmentStatuses,
@@ -61,34 +60,89 @@ describe('statusColor', () => {
 });
 
 describe('拾取 click 守卫', () => {
-  it('超过 30px 的拖动不算拾取，等于阈值仍算', () => {
-    expect(EQUIPMENT_PICK_DRAG_PX).toBe(30);
-    expect(shouldPickEquipmentClick({ detail: 1, distancePx: 30 })).toBe(true);
-    expect(shouldPickEquipmentClick({ detail: 1, distancePx: 30.1 })).toBe(false);
+  function fire(el, type, { detail, x = 20, y = 20 } = {}) {
+    const init = {
+      bubbles: true,
+      cancelable: true,
+      detail,
+      clientX: x,
+      clientY: y,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+    };
+    const event = type.startsWith('pointer') ? new PointerEvent(type, init) : new MouseEvent(type, init);
+    el.dispatchEvent(event);
+    return event;
+  }
+
+  function mountGuard(pick = () => 'eq-conveyor') {
+    const el = document.createElement('canvas');
+    const selects = [];
+    const dispatched = [];
+    const unlisten = listen(EVENTS.EQUIPMENT_SELECT, (event) => dispatched.push(event.detail));
+    const unbind = bindEquipmentClickGuard(el, {
+      pick,
+      onSelect: (id) => {
+        selects.push(id);
+        dispatch(EVENTS.EQUIPMENT_SELECT, id ? { id } : null);
+      },
+    });
+    return {
+      el,
+      selects,
+      dispatched,
+      close: () => {
+        unbind();
+        unlisten();
+      },
+    };
+  }
+
+  it('拖拽阈值与双击归位是同一个 30px 常数', () => {
+    expect(VIEW_RESET_DOUBLE_TAP_PX).toBe(30);
+    expect(shouldPickEquipmentClick({ detail: 1, distancePx: VIEW_RESET_DOUBLE_TAP_PX })).toBe(true);
+    expect(shouldPickEquipmentClick({ detail: 1, distancePx: VIEW_RESET_DOUBLE_TAP_PX + 0.1 })).toBe(false);
   });
 
-  it('click.detail > 1 跳过，单击 detail 1 会选中', () => {
-    expect(shouldPickEquipmentClick({ detail: 2, distancePx: 0 })).toBe(false);
-    expect(shouldPickEquipmentClick({ detail: 3, distancePx: 0 })).toBe(false);
-    expect(shouldPickEquipmentClick({ detail: 1, distancePx: 0 })).toBe(true);
-    vi.useFakeTimers();
-    try {
-      const picks = [];
-      const gate = createEquipmentPickGate();
-      gate.click({ detail: 1 }, () => picks.push('first'));
-      vi.advanceTimersByTime(EQUIPMENT_CLICK_SETTLE_MS - 1);
-      expect(picks).toEqual([]);
-      gate.click({ detail: 2 }, () => picks.push('second'));
-      vi.advanceTimersByTime(EQUIPMENT_CLICK_SETTLE_MS);
-      expect(picks).toEqual([]);
+  it('鼠标双击按浏览器顺序派发：第一下 click 选中一次，第二下和 dblclick 不改选择也不派发 null', () => {
+    const guard = mountGuard();
+    const down = fire(guard.el, 'pointerdown', { detail: 0 });
+    const up = fire(guard.el, 'pointerup', { detail: 0 });
+    expect(down.detail).toBe(0);
+    expect(up.detail).toBe(0);
+    expect(guard.selects).toEqual([]);
 
-      gate.click({ detail: 1 }, () => picks.push('eq-conveyor'));
-      vi.advanceTimersByTime(EQUIPMENT_CLICK_SETTLE_MS);
-      expect(picks).toEqual(['eq-conveyor']);
-      gate.dispose();
-    } finally {
-      vi.useRealTimers();
-    }
+    const first = fire(guard.el, 'click', { detail: 1 });
+    expect(first.detail).toBe(1);
+    expect(guard.selects).toEqual(['eq-conveyor']);
+    expect(guard.dispatched).toEqual([{ id: 'eq-conveyor' }]);
+
+    fire(guard.el, 'pointerdown', { detail: 0 });
+    fire(guard.el, 'pointerup', { detail: 0 });
+    const second = fire(guard.el, 'click', { detail: 2 });
+    const dbl = fire(guard.el, 'dblclick', { detail: 2 });
+    expect(second.detail).toBe(2);
+    expect(dbl.detail).toBe(2);
+    expect(guard.selects).toEqual(['eq-conveyor']);
+    expect(guard.dispatched).toEqual([{ id: 'eq-conveyor' }]);
+    expect(guard.dispatched).not.toContain(null);
+    guard.close();
+  });
+
+  it('按下到 click 超过共用阈值不选中，等于阈值仍选中', () => {
+    const guard = mountGuard();
+    fire(guard.el, 'pointerdown', { detail: 0, x: 0, y: 0 });
+    fire(guard.el, 'pointerup', { detail: 0, x: VIEW_RESET_DOUBLE_TAP_PX + 1, y: 0 });
+    fire(guard.el, 'click', { detail: 1, x: VIEW_RESET_DOUBLE_TAP_PX + 1, y: 0 });
+    expect(guard.selects).toEqual([]);
+    expect(guard.dispatched).toEqual([]);
+
+    fire(guard.el, 'pointerdown', { detail: 0, x: 0, y: 0 });
+    fire(guard.el, 'pointerup', { detail: 0, x: VIEW_RESET_DOUBLE_TAP_PX, y: 0 });
+    fire(guard.el, 'click', { detail: 1, x: VIEW_RESET_DOUBLE_TAP_PX, y: 0 });
+    expect(guard.selects).toEqual(['eq-conveyor']);
+    guard.close();
   });
 
   it('isDoubleTap 为真时不拾取，留给合入后的触屏双击判定', () => {
@@ -118,6 +172,62 @@ describe('状态材质备份与恢复', () => {
     expect(a.material).toBe(shared);
     expect(a.userData._statusOrig).toBeUndefined();
     expect(clearMeshStatus(a)).toBe(false);
+  });
+
+  it('线框/点云模式下重新着色保持显示模式，切回实体后材质正确且没有残留 clone', () => {
+    const { shared, a } = pair();
+    a.userData.equipmentId = 'eq-conveyor';
+    const root = new THREE.Group();
+    root.add(a);
+    paintEquipmentStatuses(root, [{ id: 'eq-conveyor', status: 'alarm' }], null);
+    const alarmClone = a.material;
+    expect(alarmClone).not.toBe(shared);
+    let alarmDisposed = 0;
+    alarmClone.addEventListener('dispose', () => { alarmDisposed += 1; });
+
+    setMeshDisplayMode(a, 'wireframe');
+    const wire = a.material;
+    expect(wire.wireframe).toBe(true);
+    paintEquipmentStatuses(root, [{ id: 'eq-conveyor', status: 'down' }], 'eq-conveyor');
+    expect(a.material).toBe(wire);
+    expect(wire.wireframe).toBe(true);
+    expect(alarmDisposed).toBe(1);
+    expect(a.userData.origMat).not.toBe(alarmClone);
+    expect(a.userData.origMat.emissive.getHexString()).toBe('ef4444');
+    expect(a.userData._statusOrig).toBe(shared);
+    expect(shared.emissive.getHex()).toBe(0x000000);
+
+    const downClone = a.userData.origMat;
+    setMeshDisplayMode(a, 'solid');
+    expect(a.material).toBe(downClone);
+    expect(a.material.wireframe).not.toBe(true);
+    expect(a.userData.origMat).toBeUndefined();
+    expect(a.userData._statusOrig).toBe(shared);
+    expect(a.material.emissive.getHexString()).toBe('ef4444');
+
+    setMeshDisplayMode(a, 'points');
+    const proxy = a.userData._pointsProxy;
+    expect(proxy?.isPoints).toBe(true);
+    let downDisposed = 0;
+    downClone.addEventListener('dispose', () => { downDisposed += 1; });
+    paintEquipmentStatuses(root, [{ id: 'eq-conveyor', status: 'normal' }], null);
+    expect(a.userData._pointsProxy).toBe(proxy);
+    expect(a.children).toContain(proxy);
+    expect(downDisposed).toBe(1);
+    expect(a.material.visible).toBe(false);
+    expect(a.userData.origMat).toBe(a.material);
+    expect(a.material.emissive.getHexString()).toBe('22c55e');
+    expect(shared.visible).toBe(true);
+
+    const normalClone = a.material;
+    setMeshDisplayMode(a, 'solid');
+    expect(a.userData._pointsProxy).toBeNull();
+    expect(a.userData.origMat).toBeUndefined();
+    expect(a.material).toBe(normalClone);
+    expect(a.material.visible).toBe(true);
+    expect(a.material.isMeshStandardMaterial).toBe(true);
+    expect(a.material.emissive.getHexString()).toBe('22c55e');
+    expect(a.userData._statusOrig).toBe(shared);
   });
 
   it('停机压暗的是 clone；重复着色不叠乘；选中只抬强度，取消选中后状态色还在', () => {
