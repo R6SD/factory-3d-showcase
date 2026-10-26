@@ -36,31 +36,21 @@ export function firstVisibleHit(intersections) {
  * 是否把这次 click 当成设备拾取。
  * detail > 1 是双击的第二次，不改变选择，也不当成点空白清掉选择。
  * 位移超过 dragPx 是拖轨道。dragPx 默认就是双击归位的 VIEW_RESET_DOUBLE_TAP_PX。
- * isDoubleTap 留给触屏：触屏没有 dblclick，click.detail 不会变成 2。
- * isViewResetDoubleTap 不在这里复制，调用方把判定结果传给 isDoubleTap。
+ * 触屏没有 dblclick，两次点击的 detail 都是 1，这里不另做双击过滤。
  */
 export function shouldPickEquipmentClick({
   detail = 1,
   distancePx = 0,
   dragPx = VIEW_RESET_DOUBLE_TAP_PX,
-  isDoubleTap = false,
 } = {}) {
-  if (isDoubleTap) return false;
   if (detail > 1) return false;
   return distancePx <= dragPx;
 }
 
-/**
- * 从命中网格向上找最近一个带 equipmentId 的祖先（含自身）。
- * skipHidden：拾取射线向上走时跳过 visible === false 的节点，不采用其 equipmentId。
- */
-export function equipmentIdOf(object, { skipHidden = false } = {}) {
+/** 从命中网格向上找最近一个带 equipmentId 的祖先（含自身）。 */
+export function equipmentIdOf(object) {
   let node = object;
   while (node) {
-    if (skipHidden && node.visible === false) {
-      node = node.parent;
-      continue;
-    }
     const id = node.userData?.equipmentId;
     if (id) return id;
     node = node.parent;
@@ -71,19 +61,18 @@ export function equipmentIdOf(object, { skipHidden = false } = {}) {
 /**
  * 在 click 上拾取。pointer 事件的 detail 按规范恒为 0，不拿来计点击次数。
  * 鼠标双击的顺序是 pointerdown、pointerup、click(detail=1)，再来一轮后是 click(detail=2)、dblclick。
- * detail > 1、拖过阈值、或 isDoubleTap 时不调用 onSelect，因此不会改选择，也不会派发 null。
+ * detail > 1 或拖过阈值时不调用 onSelect，因此不会改选择，也不会派发 null。
  * dblclick 本身不在这里监听。
  */
 export function bindEquipmentClickGuard(target, {
   pick,
   onSelect,
-  isDoubleTap = () => false,
   dragPx = VIEW_RESET_DOUBLE_TAP_PX,
 } = {}) {
   let down = null;
   const onPointerDown = (event) => {
     if (event.button !== 0) return;
-    down = { x: event.clientX, y: event.clientY, t: event.timeStamp, button: event.button };
+    down = { x: event.clientX, y: event.clientY };
   };
   const onPointerCancel = () => {
     down = null;
@@ -96,7 +85,6 @@ export function bindEquipmentClickGuard(target, {
       detail: event.detail,
       distancePx,
       dragPx,
-      isDoubleTap: isDoubleTap(start, event),
     })) return;
     if (event.button !== 0) return;
     onSelect(pick(event));
@@ -264,24 +252,4 @@ export function paintEquipmentStatuses(root, catalog, selectedId) {
     if (!id || !byId.has(id)) return;
     applyMeshStatus(node, byId.get(id), { selected: id === selectedId });
   });
-}
-
-/**
- * 在画布上登记拾取监听，返回卸下函数。pointercancel 只清掉按下状态，不拾取。
- */
-export function bindEquipmentPick(target, handlers) {
-  const down = (event) => handlers.onDown(event);
-  const up = (event) => handlers.onUp?.(event);
-  const cancel = (event) => handlers.onCancel?.(event);
-  const click = (event) => handlers.onClick?.(event);
-  target.addEventListener('pointerdown', down);
-  target.addEventListener('pointerup', up);
-  target.addEventListener('pointercancel', cancel);
-  target.addEventListener('click', click);
-  return () => {
-    target.removeEventListener('pointerdown', down);
-    target.removeEventListener('pointerup', up);
-    target.removeEventListener('pointercancel', cancel);
-    target.removeEventListener('click', click);
-  };
 }

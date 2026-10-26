@@ -94,10 +94,6 @@ function seedOutputRecords(people, now = new Date(), monthsBack = 5) {
 }
 
 /**
- * 按月生成产量计划：每个工作日、每位有产出基准人员的基准量之和，再上浮一个确定性的目标系数（1.0~1.12）。
- * 计划略高于实际均值，使达成率呈现 90%~105% 的合理分布。
- */
-/**
  * 设备台账（模拟 KPI / 告警）。状态着色和详情侧栏只读这份数组。
  * 可整表替换为 IoT 订阅结果；不改 MES 接口，也不和产能环形图的四态混在一起。
  */
@@ -112,6 +108,10 @@ function seedDevices() {
   ];
 }
 
+/**
+ * 按月生成产量计划：每个工作日、每位有产出基准人员的基准量之和，再上浮一个确定性的目标系数（1.0~1.12）。
+ * 计划略高于实际均值，使达成率呈现 90%~105% 的合理分布。
+ */
 function seedMonthlyPlans(people, now = new Date(), monthsBack = 5) {
   const plans = {};
   for (let back = monthsBack; back >= 0; back--) {

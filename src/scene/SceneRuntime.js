@@ -431,8 +431,6 @@ export class SceneRuntime {
     this._touchDown = null;
     this._touchIds = new Set();
     this._touchGesture = null;
-    this._pickRaycaster = null;
-    this._pickPointer = null;
 
     // 设备拾取与状态着色（与双击归位的监听分开登记，便于合并）
     this._equipmentPickEnabled = true;
@@ -1072,22 +1070,7 @@ export class SceneRuntime {
   }
 
   _pointerHitsModel(event) {
-    const model = this.model;
-    const el = this.renderer?.domElement;
-    if (!model || !el) return false;
-    const rect = el.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return false;
-    if (!this._pickRaycaster) {
-      this._pickRaycaster = new THREE.Raycaster();
-      this._pickPointer = new THREE.Vector2();
-    }
-    this._pickPointer.set(
-      ((event.clientX - rect.left) / rect.width) * 2 - 1,
-      -((event.clientY - rect.top) / rect.height) * 2 + 1,
-    );
-    this._pickRaycaster.setFromCamera(this._pickPointer, this.camera);
-    // 与设备拾取、右键标注共用 firstVisibleHit：自身或任一祖先 visible === false 则跳过。
-    return firstVisibleHit(this._pickRaycaster.intersectObject(model, true)) != null;
+    return this._raycastVisible(event.clientX, event.clientY) != null;
   }
 
   _cancelViewReset() {
@@ -1489,23 +1472,14 @@ export class SceneRuntime {
         if (this._equipmentPickEnabled === false) return;
         this._setEquipmentSelection(id);
       },
-      isDoubleTap: (down, event) => this._isEquipmentDoubleTap(down, event),
     });
     this._unsubEquipmentSelect?.();
     this._unsubEquipmentSelect = listen(EVENTS.EQUIPMENT_SELECT, this._onEquipmentSelect);
   }
 
-  /**
-   * 触屏没有 dblclick，click.detail 不会到 2。
-   * 调用方把 isViewResetDoubleTap(down, { t, x, y }) 的结果从这里返回。不要在此复制该函数。
-   */
-  _isEquipmentDoubleTap(_down, _event) {
-    return false;
-  }
-
   _pickEquipmentId(event) {
     const hit = this._raycastVisible(event.clientX, event.clientY);
-    return hit ? equipmentIdOf(hit.object, { skipHidden: true }) : null;
+    return hit ? equipmentIdOf(hit.object) : null;
   }
 
   _raycastVisible(clientX, clientY) {

@@ -38,7 +38,7 @@ function Scene(){
     const runtime=new SceneRuntime(host.current,{onNotice:setNotice,onLoading:setLoading,onDragOver:setDragOver,onModelLoaded:file=>setConfig(x=>({...x,models:upsertModel(x.models,{name:file.name,format:file.name.split('.').pop().toUpperCase(),size:file.size,updated:new Date().toLocaleDateString(),tag:'本地导入'})}))});
     rt.current=runtime;
     runtime.updateConfig(config.scene);
-    return()=>{runtime.clearDeviceStatuses();runtime.dispose();rt.current=null};
+    return()=>{runtime.dispose();rt.current=null};
   },[]);
   useEffect(()=>{rt.current?.updateConfig(config.scene)},[config.scene]);
   useEffect(()=>{

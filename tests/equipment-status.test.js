@@ -14,7 +14,6 @@ import {
   shouldPickEquipmentClick,
   isHierarchyVisible,
   firstVisibleHit,
-  bindEquipmentPick,
   bindEquipmentClickGuard,
   applyMeshStatus,
   clearMeshStatus,
@@ -143,10 +142,6 @@ describe('拾取 click 守卫', () => {
     fire(guard.el, 'click', { detail: 1, x: VIEW_RESET_DOUBLE_TAP_PX, y: 0 });
     expect(guard.selects).toEqual(['eq-conveyor']);
     guard.close();
-  });
-
-  it('isDoubleTap 为真时不拾取，留给合入后的触屏双击判定', () => {
-    expect(shouldPickEquipmentClick({ detail: 1, distancePx: 0, isDoubleTap: true })).toBe(false);
   });
 });
 
@@ -277,55 +272,6 @@ describe('射线可见性', () => {
     visible.visible = true;
     expect(firstVisibleHit([nearHidden, far])).toBe(far);
     expect(firstVisibleHit([])).toBeNull();
-  });
-
-  it('拾取向上走时跳过 visible === false 的节点，不用它的 equipmentId', () => {
-    const root = new THREE.Group();
-    root.userData.equipmentId = 'eq-root';
-    const hidden = new THREE.Group();
-    hidden.visible = false;
-    hidden.userData.equipmentId = 'eq-hidden';
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial());
-    hidden.add(mesh);
-    root.add(hidden);
-    expect(equipmentIdOf(mesh)).toBe('eq-hidden');
-    expect(equipmentIdOf(mesh, { skipHidden: true })).toBe('eq-root');
-
-    const orphan = new THREE.Group();
-    const hiddenOnly = new THREE.Group();
-    hiddenOnly.visible = false;
-    hiddenOnly.userData.equipmentId = 'eq-hidden';
-    const child = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial());
-    hiddenOnly.add(child);
-    orphan.add(hiddenOnly);
-    expect(equipmentIdOf(child, { skipHidden: true })).toBeNull();
-  });
-});
-
-describe('监听清理', () => {
-  it('卸下后 pointerdown / pointerup / pointercancel 不再触发', () => {
-    const el = document.createElement('div');
-    let downs = 0;
-    let ups = 0;
-    let cancels = 0;
-    const unbind = bindEquipmentPick(el, {
-      onDown: () => { downs += 1; },
-      onUp: () => { ups += 1; },
-      onCancel: () => { cancels += 1; },
-    });
-    el.dispatchEvent(new Event('pointerdown'));
-    el.dispatchEvent(new Event('pointerup'));
-    el.dispatchEvent(new Event('pointercancel'));
-    expect(downs).toBe(1);
-    expect(ups).toBe(1);
-    expect(cancels).toBe(1);
-    unbind();
-    el.dispatchEvent(new Event('pointerdown'));
-    el.dispatchEvent(new Event('pointerup'));
-    el.dispatchEvent(new Event('pointercancel'));
-    expect(downs).toBe(1);
-    expect(ups).toBe(1);
-    expect(cancels).toBe(1);
   });
 });
 
