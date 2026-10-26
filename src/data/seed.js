@@ -94,6 +94,21 @@ function seedOutputRecords(people, now = new Date(), monthsBack = 5) {
 }
 
 /**
+ * 设备台账（模拟 KPI / 告警）。状态着色和详情侧栏只读这份数组。
+ * 可整表替换为 IoT 订阅结果；不改 MES 接口，也不和产能环形图的四态混在一起。
+ */
+function seedDevices() {
+  return [
+    { id: 'eq-conveyor', name: '主传送带', status: 'normal', line: '总装线 A', kpi: { oee: 86, throughput: 120, temp: 42 }, alarm: null },
+    { id: 'eq-silo-a', name: '原料仓 A', status: 'alarm', line: '原料线', kpi: { oee: 71, throughput: 80, temp: 68 }, alarm: { code: 'E-201', message: '校准延迟' } },
+    { id: 'eq-silo-b', name: '原料仓 B', status: 'normal', line: '原料线', kpi: { oee: 91, throughput: 76, temp: 36 }, alarm: null },
+    { id: 'eq-bldg-mfg', name: '制造主厂房', status: 'normal', line: '总装线 A', kpi: { oee: 88, throughput: 210, temp: 31 }, alarm: null },
+    { id: 'eq-line-c', name: '总装线 C', status: 'down', line: '总装线 C', kpi: { oee: 41, throughput: 0, temp: 22 }, alarm: { code: 'E-118', message: '主轴停机' } },
+    { id: 'eq-bldg-pack', name: '包装车间', status: 'alarm', line: '包装线', kpi: { oee: 64, throughput: 54, temp: 47 }, alarm: { code: 'E-305', message: '封箱气压不足' } },
+  ];
+}
+
+/**
  * 按月生成产量计划：每个工作日、每位有产出基准人员的基准量之和，再上浮一个确定性的目标系数（1.0~1.12）。
  * 计划略高于实际均值，使达成率呈现 90%~105% 的合理分布。
  */
@@ -164,6 +179,7 @@ export function createSeedBusiness(now = new Date()) {
     ],
     people,
     outputRecords: seedOutputRecords(people, now),
+    devices: seedDevices(),
   };
 }
 
@@ -218,6 +234,27 @@ function normalizeRecord(r) {
   };
 }
 
+const DEVICE_STATUSES = new Set(['normal', 'alarm', 'down']);
+
+function normalizeDevice(d) {
+  const status = DEVICE_STATUSES.has(d?.status) ? d.status : 'normal';
+  const alarm = d?.alarm && d.alarm.code
+    ? { code: String(d.alarm.code), message: String(d.alarm.message || '') }
+    : null;
+  return {
+    id: String(d?.id || ''),
+    name: String(d?.name || d?.id || ''),
+    status,
+    line: String(d?.line || ''),
+    kpi: {
+      oee: Number(d?.kpi?.oee) || 0,
+      throughput: Number(d?.kpi?.throughput) || 0,
+      temp: Number(d?.kpi?.temp) || 0,
+    },
+    alarm,
+  };
+}
+
 /** 规范化业务数据：缺字段时用种子补齐，保证页面永远拿到完整结构 */
 export function normalizeBusiness(input) {
   const seed = createSeedBusiness();
@@ -230,6 +267,9 @@ export function normalizeBusiness(input) {
     monthlyPlans: { ...seed.monthlyPlans, ...(input.monthlyPlans || {}) },
     people: (Array.isArray(input.people) && input.people.length ? input.people : seed.people).map(normalizePerson),
     outputRecords: Array.isArray(input.outputRecords) ? input.outputRecords.map(normalizeRecord) : seed.outputRecords,
+    devices: (Array.isArray(input.devices) && input.devices.length ? input.devices : seed.devices)
+      .map(normalizeDevice)
+      .filter((d) => d.id),
     version: BUSINESS_VERSION,
   };
 }
