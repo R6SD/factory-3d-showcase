@@ -1158,8 +1158,7 @@ export class SceneRuntime {
     const tap = { t: performance.now(), x: event.clientX, y: event.clientY };
     if (isViewResetDoubleTap(this._lastTap, tap)) {
       this._lastTap = null;
-      // 触屏双击只归位，不留给第二下拾取。鼠标双击仍走 _tryViewReset，命中模型时不归位。
-      this._beginViewReset();
+      this._tryViewReset(event);
     } else {
       this._lastTap = tap;
     }

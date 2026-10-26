@@ -144,7 +144,7 @@ describe('拾取 click 守卫', () => {
     guard.close();
   });
 
-  it('触屏单击拾取；双击窗口内第二下只归位，不改选择', () => {
+  function mountTouchScene() {
     const el = document.createElement('canvas');
     el.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 200, right: 200, bottom: 200 });
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
@@ -189,33 +189,68 @@ describe('拾取 click 守卫', () => {
     el.addEventListener('pointerup', rt._onViewResetPointerUp);
     const picked = [];
     const unlisten = listen(EVENTS.EQUIPMENT_SELECT, (event) => picked.push(event.detail?.id ?? null));
-    let now = 1000;
-    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
-    const tap = () => {
-      el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', pointerId: 1, button: 0, clientX: 100, clientY: 100 }));
-      el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', pointerId: 1, button: 0, clientX: 100, clientY: 100 }));
-      el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1, button: 0, clientX: 100, clientY: 100 }));
+    const state = { now: 1000 };
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => state.now);
+    const tap = (x, y) => {
+      const init = { bubbles: true, pointerType: 'touch', pointerId: 1, button: 0, clientX: x, clientY: y };
+      el.dispatchEvent(new PointerEvent('pointerdown', init));
+      el.dispatchEvent(new PointerEvent('pointerup', init));
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1, button: 0, clientX: x, clientY: y }));
     };
+    return {
+      rt,
+      picked,
+      tap,
+      state,
+      close() {
+        clock.mockRestore();
+        unlisten();
+        rt._unbindEquipmentPick?.();
+        rt._unsubEquipmentSelect?.();
+      },
+    };
+  }
 
+  it('触屏单击拾取；双击设备第二下不改选择，相机不归位', () => {
+    const scene = mountTouchScene();
+    const { rt, picked, tap, state } = scene;
     expect(rt._pointerHitsModel({ clientX: 100, clientY: 100 })).toBe(true);
-    tap();
+    const cameraBefore = rt.camera.position.clone();
+
+    tap(100, 100);
     expect(picked).toEqual(['eq-conveyor']);
     expect(rt._selectedEquipmentId).toBe('eq-conveyor');
     expect(rt._viewReset).toBeNull();
 
-    now = 1200;
-    tap();
+    state.now = 1200;
+    tap(100, 100);
     expect(picked).toEqual(['eq-conveyor']);
     expect(rt._selectedEquipmentId).toBe('eq-conveyor');
+    expect(rt._viewReset).toBeNull();
+    rt._applyViewReset(state.now + VIEW_RESET_MS);
+    expect(rt.camera.position.distanceTo(cameraBefore)).toBeLessThan(1e-6);
+    expect(rt.camera.position.distanceTo(rt._homePosition)).toBeGreaterThan(1);
+    scene.close();
+  });
+
+  it('触屏双击空白仍归位，第二下不重复派发', () => {
+    const scene = mountTouchScene();
+    const { rt, picked, tap, state } = scene;
+    expect(rt._pointerHitsModel({ clientX: 8, clientY: 8 })).toBe(false);
+
+    tap(8, 8);
+    expect(picked).toEqual([null]);
+    expect(rt._viewReset).toBeNull();
+
+    state.now = 1200;
+    tap(8, 8);
+    expect(picked).toEqual([null]);
+    expect(rt._selectedEquipmentId).toBeNull();
     expect(rt._viewReset).not.toBeNull();
-    rt._applyViewReset(now + VIEW_RESET_MS);
+    rt._applyViewReset(state.now + VIEW_RESET_MS);
     expect(rt.camera.position.distanceTo(rt._homePosition)).toBeLessThan(1e-4);
     expect(rt.control.target.distanceTo(rt._homeTarget)).toBeLessThan(1e-4);
-
-    clock.mockRestore();
-    unlisten();
-    rt._unbindEquipmentPick?.();
-    rt._unsubEquipmentSelect?.();
+    scene.close();
   });
 });
 
