@@ -69,6 +69,7 @@ export function PerfBudgetPanel() {
             text={calls == null ? null : String(calls)}
             level={calls == null ? null : budgetLevel('drawCalls', calls)}
           />
+          <DiagnosticRows perf={perf} />
           <div className="perf-row"><span>{budgetFooter()}</span></div>
         </div>
       )}
@@ -82,5 +83,33 @@ function Metric({ metric, label, text, level }) {
       <span>{label}</span>
       <b className={level ? LEVEL_CLASS[level] || '' : ''}>{text == null ? '—' : text}</b>
     </div>
+  );
+}
+
+/**
+ * 原 FPS 面板的四行，放在预算行下面。数值和「渲染/秒」的 good 与 main 相同，不走 budgetLevel。
+ * 有跳帧时 good 只表示按需渲染在跳过空帧。三角面标签改成「每帧提交」，避免和模型总量混读。
+ */
+function DiagnosticRows({ perf }) {
+  const present = Boolean(perf);
+  return (
+    <>
+      <div className="perf-row" data-metric="rfs">
+        <span>渲染/秒</span>
+        <b className={present && perf.sfs > 0 ? 'good' : ''}>{present ? perf.rfs : '—'}</b>
+      </div>
+      <div className="perf-row" data-metric="sfs">
+        <span>跳过/秒</span>
+        <b>{present ? perf.sfs : '—'}</b>
+      </div>
+      <div className="perf-row" data-metric="trisFrame">
+        <span>三角面（每帧提交）</span>
+        <b>{present ? `${(perf.tris / 1000).toFixed(1)}k` : '—'}</b>
+      </div>
+      <div className="perf-row" data-metric="stereo">
+        <span>立体模式</span>
+        <b>{present ? perf.mode : '—'}</b>
+      </div>
+    </>
   );
 }

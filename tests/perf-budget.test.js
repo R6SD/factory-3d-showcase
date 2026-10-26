@@ -189,6 +189,59 @@ describe('PerfBudgetPanel', () => {
     expect(row('drawCalls').querySelector('b').className).toBe('');
   });
 
+  it('预算三行下面仍渲染原来的四行，数值和着色与 main 的面板一致', () => {
+    mountRuntime({
+      getFps: () => 12,
+      getPerf: () => ({ calls: 177, tris: 5356, trisTotal: 5404, rfs: 2, sfs: 58, mode: 'parallax' }),
+    });
+    act(() => {
+      document.querySelector('.perf-toggle').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    const rows = [...document.querySelectorAll('.perf-overlay .perf-row')];
+    const labels = rows.map((node) => node.querySelector('span').textContent);
+    const budgetEnd = labels.findIndex((label) => label.startsWith('绘制调用/帧'));
+    const diagnostic = labels.slice(budgetEnd + 1, budgetEnd + 5);
+    expect(diagnostic).toEqual(['渲染/秒', '跳过/秒', '三角面（每帧提交）', '立体模式']);
+    expect(labels.at(-1)).toBe(budgetFooter());
+
+    expect(row('rfs').querySelector('b').textContent).toBe('2');
+    expect(row('rfs').querySelector('b').className).toBe('good');
+    expect(row('sfs').querySelector('b').textContent).toBe('58');
+    expect(row('sfs').querySelector('b').className).toBe('');
+    expect(row('trisFrame').querySelector('b').textContent).toBe('5.4k');
+    expect(row('trisFrame').querySelector('b').className).toBe('');
+    expect(row('stereo').querySelector('b').textContent).toBe('parallax');
+    expect(row('stereo').querySelector('b').className).toBe('');
+    for (const metric of ['rfs', 'sfs', 'trisFrame', 'stereo']) {
+      expect(row(metric).querySelector('b').className).not.toMatch(/warn|bad/);
+    }
+
+    act(() => root.unmount());
+    mountRuntime({
+      getFps: () => 60,
+      getPerf: () => ({ calls: 10, tris: 0, trisTotal: 1, rfs: 60, sfs: 0, mode: 'off' }),
+    });
+    act(() => {
+      document.querySelector('.perf-toggle').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(row('rfs').querySelector('b').textContent).toBe('60');
+    expect(row('rfs').querySelector('b').className).toBe('');
+    expect(row('sfs').querySelector('b').textContent).toBe('0');
+    expect(row('trisFrame').querySelector('b').textContent).toBe('0.0k');
+    expect(row('stereo').querySelector('b').textContent).toBe('off');
+
+    act(() => root.unmount());
+    mountRuntime({ getFps: () => 0, getPerf: () => null });
+    act(() => {
+      document.querySelector('.perf-toggle').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    for (const metric of ['rfs', 'sfs', 'trisFrame', 'stereo']) {
+      expect(row(metric).querySelector('b').textContent).toBe('—');
+      expect(row(metric).querySelector('b').className).toBe('');
+    }
+  });
+
   it('打开后面板至少每 500ms 只读 getFps/getPerf，关闭后不再读', () => {
     const runtime = {
       getFps: vi.fn(() => 60),

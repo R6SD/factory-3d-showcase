@@ -708,7 +708,9 @@ export class SceneRuntime {
 
   /**
    * 自上次调用以来的渲染/跳过帧速率、最近一帧绘制调用与每帧提交三角面。
-   * trisTotal 是模型静态三角面，来自最近一次 getModelInfo 缓存（模型对象变化时才重算）。
+   * trisTotal 是模型静态三角面，来自最近一次 getModelInfo() 缓存。
+   * 这里只在 this.model 对象本身换掉时才调用 getModelInfo()。就地往当前模型添加子节点不会在 getPerf 里重算，缓存会一直停在旧的遍历结果。
+   * 三维页 ModelInfoBadge 每 1.5s 调用一次 getModelInfo()，那次调用会刷新这份缓存，所以面板暂时跟得上。
    * 只读，不标脏、不触发渲染。
    */
   getPerf() {
