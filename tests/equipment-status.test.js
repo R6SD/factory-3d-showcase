@@ -33,6 +33,8 @@ describe('设备 selectors', () => {
     expect(statuses.has('normal')).toBe(true);
     expect(statuses.has('alarm')).toBe(true);
     expect(statuses.has('down')).toBe(true);
+    expect(statuses.has('idle')).toBe(true);
+    expect(getDevice(createSeedBusiness(), 'eq-silo-b')?.status).toBe('idle');
     expect(getDevice(createSeedBusiness(), 'eq-conveyor')?.name).toBe('主传送带');
     expect(getDevice(createSeedBusiness(), 'missing')).toBeNull();
     expect(listDevices(null)).toEqual([]);
@@ -48,10 +50,11 @@ describe('设备 selectors', () => {
 
 describe('statusColor', () => {
   it('三种状态给出中文名和几何色，未知状态返回 null', () => {
-    expect(statusColor('normal')).toMatchObject({ label: '正常', emissive: '#22c55e' });
+    expect(statusColor('normal')).toMatchObject({ label: '运行', labelEn: 'Running', emissive: '#22c55e' });
     expect(statusColor('normal').emissiveIntensity).toBeLessThan(statusColor('alarm').emissiveIntensity);
-    expect(statusColor('alarm')).toMatchObject({ label: '告警', emissive: '#f59e0b' });
-    expect(statusColor('down')).toMatchObject({ label: '停机', emissive: '#ef4444' });
+    expect(statusColor('alarm')).toMatchObject({ label: '异常', labelEn: 'Alarm', emissive: '#f59e0b' });
+    expect(statusColor('down')).toMatchObject({ label: '离线', labelEn: 'Offline', emissive: '#ef4444' });
+    expect(statusColor('idle')).toMatchObject({ label: '待机', labelEn: 'Idle', emissive: '#60a5fa' });
     expect(statusColor('down').albedoScale).toBeLessThan(1);
     expect(statusColor('maintain')).toBeNull();
     expect(statusColor(undefined)).toBeNull();
@@ -581,7 +584,9 @@ describe('设备详情面板', () => {
     expect(el.props.role).toBe('dialog');
     const html = renderToStaticMarkup(el);
     expect(html).toContain('主传送带');
-    expect(html).toContain('正常');
+    expect(html).toContain('运行');
+    const en = renderToStaticMarkup(DeviceDetailPanel({ device: conveyor, onClose() {}, lang: 'en' }));
+    expect(en).toContain('Running');
     expect(html).toContain('86');
     expect(html).toContain('无活动告警');
     expect(DeviceDetailPanel({ device: null, onClose() {} })).toBeNull();
