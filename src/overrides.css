@@ -350,12 +350,13 @@ header{backdrop-filter:blur(16px) saturate(1.3);-webkit-backdrop-filter:blur(16p
 .sun-glyph{stroke:#ffc864;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;transition:stroke .2s}
 .sun-ring.is-active .sun-glyph{stroke:#ffdc96}
 
-.compass-3d{position:absolute;right:16px;top:82px;z-index:5;pointer-events:auto;cursor:pointer;filter:drop-shadow(0 4px 12px rgba(0,0,0,.4));transition:transform .2s ease,filter .2s ease}
+.compass-3d{position:absolute;right:16px;top:82px;z-index:5;pointer-events:auto;cursor:default;filter:drop-shadow(0 4px 12px rgba(0,0,0,.4));transition:transform .2s ease,filter .2s ease}
 .compass-3d:hover{transform:scale(1.08);filter:drop-shadow(0 6px 20px rgba(107,159,255,.3))}
 .compass-3d:active{transform:scale(.96)}
 .compass-3d svg{display:block;shape-rendering:geometricPrecision}
 .compass-3d text{user-select:none;pointer-events:none;text-rendering:geometricPrecision}
-.compass-3d g[style*="cursor"]{cursor:pointer}
+.compass-3d .compass-hit{pointer-events:all;cursor:pointer}
+.compass-3d .compass-idle{pointer-events:none;cursor:default}
 
 /* ===== 头部实时时钟 ===== */
 .viewer-clock{display:flex;align-items:center;padding:6px 14px;border:1px solid rgba(100,150,220,.2);border-radius:6px;background:rgba(10,22,44,.6);font:700 13px "JetBrains Mono",ui-monospace,"Cascadia Code",Consolas,monospace;color:var(--accent);letter-spacing:.08em;box-shadow:0 0 10px rgba(107,159,255,.1);margin-right:8px}
@@ -566,3 +567,29 @@ button.text.danger-text{color:#ff7a7a}
 
 .admin{--bg:#000000;--panel:rgba(18,38,68,.55);--panel2:rgba(24,48,82,.6);--line:#2a4a78;--text:#f0f6ff;--muted:#93a8c8;--accent:#6B9FFF;--good:#34d399;background:#020715;color:var(--text)}
 .admin.light{--bg:#eef4fb;--panel:rgba(255,255,255,.7);--panel2:rgba(240,246,252,.75);--line:#c5d6ea;--text:#1a2a44;--muted:#5a7294;--accent:#3a7ae0;--good:#0f9d76;background:#eef4fb;color:var(--text)}
+
+/* #37 窄屏适配：≥1280 不受影响 */
+@media (max-width:1100px){
+main{padding:12px}
+.viewer-page{min-height:0;height:calc(100vh - 98px)}
+/* 768 工具栏约 837px，收缩到视口内再换行。bottom 用更高优先级，否则会被 style.css 的 38px 盖掉，统计条会压住最下一行按钮 */
+.viewer-page .view-actions{width:max-content;max-width:calc(100% - 16px);flex-wrap:wrap;justify-content:center;bottom:74px}
+/* 768 下右侧详情和左上性能面板重叠，改成底部抽屉，并留在抬高后的工具栏之上 */
+.viewer-page .device-detail-panel{left:8px;right:8px;width:auto;top:auto;bottom:200px;max-height:40vh}
+}
+@media (max-width:640px){
+header{grid-template-columns:auto 1fr auto;padding:0 10px;gap:8px}
+header h1{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.brand div{display:none}
+.actions{gap:6px;flex-wrap:wrap;justify-content:flex-end}
+main{padding:8px}
+.viewer-top>div:first-child{min-width:0}
+/* 工具栏：不超出视口，必要时换行，并整段落在统计条上方 */
+.viewer-page .view-actions{width:max-content;max-width:calc(100% - 16px);flex-wrap:wrap;justify-content:center;bottom:74px}
+/* 性能面板：留在左上，限宽 */
+.perf-overlay{left:8px;top:64px;max-width:calc(100% - 16px)}
+.perf-row{gap:10px}
+/* 详情面板：改为底部抽屉，避免和性能面板重叠 */
+.viewer-page .device-detail-panel{left:8px;right:8px;width:auto;top:auto;bottom:250px;max-height:min(40vh,168px)}
+.drawer{width:100%}
+}
