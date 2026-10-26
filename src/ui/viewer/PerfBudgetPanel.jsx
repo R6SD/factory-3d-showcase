@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Ctx } from '../../app-context.jsx';
 import { PERF_BUDGET, budgetFooter, budgetLevel, formatBudgetCount } from '../../scene/perf-budget.js';
+import { viewerCopyFor } from '../viewer-strings.js';
 
 /** 只读轮询。短于 500ms 会让面板变成变相的常驻渲染驱动，这里保持与原 FPS 面板相同的间隔。 */
 const POLL_MS = 500;
@@ -17,10 +19,12 @@ function readStats() {
 
 /**
  * 三维页性能预算。工具条一键开关。
- * 文案沿用查看器里原性能面板 / 层级面板的中文，不另建文案表。
+ * 文案走 viewerCopy（zh/en），不引入 i18n 框架。无上下文时用中文，方便单测直接挂载。
  * 轮询只调用 getFps / getPerf，不调用 setView / updateConfig，避免把按需渲染打脏。
  */
 export function PerfBudgetPanel() {
+  const app = useContext(Ctx);
+  const copy = viewerCopyFor(app?.config?.language);
   const [show, setShow] = useState(false);
   const [fps, setFps] = useState(0);
   const [perf, setPerf] = useState(null);
@@ -47,24 +51,24 @@ export function PerfBudgetPanel() {
     <div className="perf-overlay">
       <Metric
         metric="fps"
-        label={`帧率 · ≥${PERF_BUDGET.fpsMin}`}
+        label={`${copy.perfFps} · ≥${PERF_BUDGET.fpsMin}`}
         text={`${fps} FPS`}
         level={budgetLevel('fps', fps)}
       />
       <Metric
         metric="tris"
-        label={`三角面（模型总量） · <${formatBudgetCount(PERF_BUDGET.trisWarn)} / <${formatBudgetCount(PERF_BUDGET.trisMax)}`}
+        label={`${copy.perfTrisTotal} · <${formatBudgetCount(PERF_BUDGET.trisWarn)} / <${formatBudgetCount(PERF_BUDGET.trisMax)}`}
         text={trisTotal == null ? null : String(trisTotal)}
         level={trisTotal == null ? null : budgetLevel('tris', trisTotal)}
       />
       <Metric
         metric="drawCalls"
-        label={`绘制调用/帧 · <${PERF_BUDGET.drawCallsWarn} / <${PERF_BUDGET.drawCallsMax}`}
+        label={`${copy.perfCalls} · <${PERF_BUDGET.drawCallsWarn} / <${PERF_BUDGET.drawCallsMax}`}
         text={calls == null ? null : String(calls)}
         level={calls == null ? null : budgetLevel('drawCalls', calls)}
       />
-      <DiagnosticRows perf={perf} />
-      <div className="perf-row"><span>{budgetFooter()}</span></div>
+      <DiagnosticRows perf={perf} copy={copy} />
+      <div className="perf-row"><span>{budgetFooter(PERF_BUDGET, { prefix: copy.perfFooterPrefix, comfort: copy.perfComfort, cap: copy.perfCap })}</span></div>
     </div>
   );
 
@@ -74,9 +78,9 @@ export function PerfBudgetPanel() {
         type="button"
         onClick={() => setShow((open) => !open)}
         className={`perf-toggle${show ? ' active' : ''}`}
-        title="性能预算"
+        title={copy.perfBudget}
       >
-        性能预算
+        {copy.perfBudget}
       </button>
       {show && (host ? createPortal(overlay, host) : overlay)}
     </>
@@ -96,24 +100,24 @@ function Metric({ metric, label, text, level }) {
  * 原 FPS 面板的四行，放在预算行下面。数值和「渲染/秒」的 good 与 main 相同，不走 budgetLevel。
  * 有跳帧时 good 只表示按需渲染在跳过空帧。三角面标签改成「每帧提交」，避免和模型总量混读。
  */
-function DiagnosticRows({ perf }) {
+function DiagnosticRows({ perf, copy }) {
   const present = Boolean(perf);
   return (
     <>
       <div className="perf-row" data-metric="rfs">
-        <span>渲染/秒</span>
+        <span>{copy.perfRender}</span>
         <b className={present && perf.sfs > 0 ? 'good' : ''}>{present ? perf.rfs : '—'}</b>
       </div>
       <div className="perf-row" data-metric="sfs">
-        <span>跳过/秒</span>
+        <span>{copy.perfSkip}</span>
         <b>{present ? perf.sfs : '—'}</b>
       </div>
       <div className="perf-row" data-metric="trisFrame">
-        <span>三角面（每帧提交）</span>
+        <span>{copy.perfTrisFrame}</span>
         <b>{present ? `${(perf.tris / 1000).toFixed(1)}k` : '—'}</b>
       </div>
       <div className="perf-row" data-metric="stereo">
-        <span>立体模式</span>
+        <span>{copy.perfStereo}</span>
         <b>{present ? perf.mode : '—'}</b>
       </div>
     </>
