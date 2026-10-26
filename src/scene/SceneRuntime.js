@@ -428,8 +428,10 @@ export class SceneRuntime {
     this._homeTarget = null;
     this._viewReset = null;
     this._lastTap = null;
-    this._lastTouchClick = null;
-    this._touchDown = null;
+    // pointerup 已经用 _lastTap 判定过双击；click 晚于 pointerup，只读这一下的结果。
+    this._touchClickDouble = false;
+    // 鼠标、笔、触屏共用这一份按下记录。moved 在按下期间由 pointermove 置位，pointerdown 换新记录即清零。
+    this._pointerDown = null;
     this._touchIds = new Set();
     this._touchGesture = null;
 
@@ -1146,47 +1148,65 @@ export class SceneRuntime {
   }
 
   _onViewResetPointerDown(event) {
-    if (event.pointerType !== 'touch') return;
-    this._touchIds.add(event.pointerId);
-    if (this._touchIds.size > 1) this._touchGesture = 'multi';
-    if (this._touchGesture === 'multi') return;
-    this._touchDown = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
+    if (event.pointerType === 'touch') {
+      this._touchIds.add(event.pointerId);
+      if (this._touchIds.size > 1) {
+        this._touchGesture = 'multi';
+        // 第二指按下：捏合不能当作双击的前半下。
+        this._lastTap = null;
+        this._touchClickDouble = false;
+      }
+      if (this._touchGesture === 'multi') return;
+      this._touchClickDouble = false;
+    } else if (event.button !== 0 || (event.pointerType !== 'mouse' && event.pointerType !== 'pen')) {
+      return;
+    }
+    this._pointerDown = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, pointerType: event.pointerType };
   }
 
   _onViewResetPointerMove(event) {
-    if (event.pointerType !== 'touch' || !this._touchDown || event.pointerId !== this._touchDown.id) return;
-    if (Math.hypot(event.clientX - this._touchDown.x, event.clientY - this._touchDown.y) > VIEW_RESET_DOUBLE_TAP_PX) {
-      this._touchDown.moved = true;
+    const down = this._pointerDown;
+    if (!down || down.released || event.pointerId !== down.id) return;
+    // 鼠标/笔只在主键按住时累计；触屏的按下状态就是这份尚未松开的记录。
+    if (down.pointerType !== 'touch' && (event.buttons & 1) !== 1) return;
+    if (Math.hypot(event.clientX - down.x, event.clientY - down.y) > VIEW_RESET_DOUBLE_TAP_PX) {
+      down.moved = true;
     }
   }
 
   _onViewResetPointerUp(event) {
+    const down = this._pointerDown;
+    if (down && event.pointerId === down.id) down.released = true;
     if (event.pointerType !== 'touch') return;
     this._touchIds.delete(event.pointerId);
-    const down = this._touchDown;
-    if (down && event.pointerId === down.id) this._touchDown = null;
     if (this._touchGesture === 'multi') {
+      if (down && event.pointerId === down.id) this._pointerDown = null;
       if (this._touchIds.size === 0) this._touchGesture = null;
+      this._touchClickDouble = false;
       return;
     }
     if (!down || down.moved || Math.hypot(event.clientX - down.x, event.clientY - down.y) > VIEW_RESET_DOUBLE_TAP_PX) {
       this._lastTap = null;
+      this._touchClickDouble = false;
       return;
     }
     const tap = { t: performance.now(), x: event.clientX, y: event.clientY };
     if (isViewResetDoubleTap(this._lastTap, tap)) {
       this._lastTap = null;
+      this._touchClickDouble = true;
       this._tryViewReset(event);
     } else {
       this._lastTap = tap;
+      this._touchClickDouble = false;
     }
   }
 
   _onViewResetPointerCancel(event) {
+    if (this._pointerDown?.id === event.pointerId) this._pointerDown = null;
     if (event.pointerType !== 'touch') return;
     this._touchIds.delete(event.pointerId);
-    if (this._touchDown?.id === event.pointerId) this._touchDown = null;
     this._lastTap = null;
+    this._touchClickDouble = false;
     if (this._touchIds.size === 0) this._touchGesture = null;
   }
 
@@ -1492,25 +1512,26 @@ export class SceneRuntime {
         this._setEquipmentSelection(id);
       },
       isTouchDoubleTap: (down, event) => this._isTouchPickDoubleTap(down, event),
+      wasDragged: () => {
+        const down = this._pointerDown;
+        if (!down) return false;
+        const moved = down.moved === true;
+        if (down.released) this._pointerDown = null;
+        return moved;
+      },
     });
     this._unsubEquipmentSelect?.();
     this._unsubEquipmentSelect = listen(EVENTS.EQUIPMENT_SELECT, this._onEquipmentSelect);
   }
 
   /**
-   * 触屏 click.detail 恒为 1。用归位同一套 isViewResetDoubleTap 识别第二下，命中则不拾取。
-   * 拖过 30px 的抬起不算一次点击，并清掉上一次，避免和后面的单击配成双击。
+   * 触屏 click.detail 恒为 1。双击只认 pointerup 写下的 _lastTap / _touchClickDouble，
+   * 与归位共用 isViewResetDoubleTap，这里不再存第二份 {t,x,y}。
    */
-  _isTouchPickDoubleTap(down, event) {
+  _isTouchPickDoubleTap(down) {
     if (down?.pointerType !== 'touch') return false;
-    const moved = Math.hypot(event.clientX - down.x, event.clientY - down.y);
-    if (moved > VIEW_RESET_DOUBLE_TAP_PX) {
-      this._lastTouchClick = null;
-      return false;
-    }
-    const tap = { t: performance.now(), x: event.clientX, y: event.clientY };
-    const doubleTap = isViewResetDoubleTap(this._lastTouchClick, tap);
-    this._lastTouchClick = doubleTap ? null : tap;
+    const doubleTap = this._touchClickDouble === true;
+    this._touchClickDouble = false;
     return doubleTap;
   }
 
