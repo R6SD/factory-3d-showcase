@@ -45,6 +45,7 @@ describe('设备 selectors', () => {
     const merged = normalizeBusiness({ capacity: { output: 1 } });
     expect(merged.devices.length).toBeGreaterThanOrEqual(4);
     expect(merged.devices.some((d) => d.status === 'down')).toBe(true);
+    expect(normalizeBusiness(createSeedBusiness()).devices.find((d) => d.id === 'eq-silo-b')?.status).toBe('idle');
   });
 });
 

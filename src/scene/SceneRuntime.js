@@ -1492,7 +1492,7 @@ export class SceneRuntime {
   }
 
   clearDeviceStatuses() {
-    this._statusFilter = null;
+    this._writeStatusFilter(null, { apply: false });
     restoreStatusMaterials(this.model);
     restoreStatusMaterials(this.exitingModel);
     this._equipmentCatalog = null;
@@ -1614,13 +1614,22 @@ export class SceneRuntime {
 
   /** 只高亮该状态；null 恢复全部。接着重刷设备色。 */
   setStatusFilter(status) {
+    this._writeStatusFilter(status);
+  }
+
+  /**
+   * 过滤只有这一处写入，并通知统计条。
+   * 换模型时先清值再卸材质，不在旧模型上重刷。
+   */
+  _writeStatusFilter(status, { apply = true } = {}) {
     this._statusFilter = status == null ? null : status;
-    this._applyDeviceStatuses();
+    if (apply) this._applyDeviceStatuses();
+    dispatch(EVENTS.EQUIPMENT_STATUS_FILTER, this._statusFilter);
   }
 
   /** 换模型前恢复旧材质并清选择。状态表保留，新模型装上后再套色。过滤一起清掉。 */
   _dropEquipmentSelection() {
-    this._statusFilter = null;
+    this._writeStatusFilter(null, { apply: false });
     restoreStatusMaterials(this.model);
     this._selectedEquipmentId = null;
     dispatch(EVENTS.EQUIPMENT_SELECT, null);

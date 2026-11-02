@@ -4,7 +4,10 @@
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as THREE from 'three';
 import { EVENTS, listen } from '../src/events.js';
+import * as ModelLoader from '../src/scene/ModelLoader.js';
+import { SceneRuntime } from '../src/scene/SceneRuntime.js';
 import { DeviceListPanel } from '../src/ui/viewer/DeviceListPanel.jsx';
 
 const t = {
@@ -98,5 +101,100 @@ describe('DeviceListPanel', () => {
     act(() => root.unmount());
     root = null;
     expect(runtime.setStatusFilter).toHaveBeenCalledWith(null);
+  });
+});
+
+describe('换模型后统计条跟着运行时清过滤', () => {
+  let root;
+  let host;
+
+  function swapRuntime() {
+    const rt = Object.create(SceneRuntime.prototype);
+    rt.focusEquipment = () => false;
+    rt._statusFilter = null;
+    rt._selectedEquipmentId = null;
+    rt._equipmentCatalog = null;
+    rt._importSeq = 0;
+    rt._cb = { onLoading() {}, onNotice() {}, onModelLoaded() {} };
+    rt.model = new THREE.Group();
+    rt.model.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial()));
+    rt.scene = { add() {} };
+    rt.mixer = null;
+    rt._displayMode = 'solid';
+    rt._fit = () => {};
+    rt._resetPress = () => {};
+    rt._cancelViewReset = () => {};
+    rt._applyDeviceStatuses = () => {};
+    rt._applyDisplayMode = () => {};
+    rt._factory = () => new THREE.Group();
+    rt.sun = { shadow: { needsUpdate: false } };
+    rt.renderer = { shadowMap: { needsUpdate: false } };
+    return rt;
+  }
+
+  function mount(runtime) {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    host = document.createElement('div');
+    document.body.append(host);
+    root = createRoot(host);
+    act(() => {
+      root.render(createElement(DeviceListPanel, {
+        devices,
+        selectedId: null,
+        runtime,
+        t,
+        lang: 'zh',
+      }));
+    });
+  }
+
+  function pressAlarm() {
+    const alarm = () => document.querySelector('.device-status-pill[data-status="alarm"]');
+    act(() => {
+      alarm().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(alarm().getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('.device-status-bar').className).toContain('is-filtering');
+  }
+
+  function expectAll() {
+    expect(document.querySelector('.device-status-pill[data-status="alarm"]').getAttribute('aria-pressed')).toBe('false');
+    expect(document.querySelector('.device-status-all').getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector('.device-status-bar').className).not.toContain('is-filtering');
+  }
+
+  afterEach(() => {
+    if (root) act(() => root.unmount());
+    root = null;
+    host?.remove();
+    host = null;
+    vi.restoreAllMocks();
+  });
+
+  it('本地导入后统计条回到全部，且运行时过滤已清空', async () => {
+    const object = new THREE.Group();
+    object.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial()));
+    vi.spyOn(ModelLoader, 'loadModelFile').mockResolvedValue({ object, mixer: null });
+    const runtime = swapRuntime();
+    mount(runtime);
+    pressAlarm();
+    expect(runtime._statusFilter).toBe('alarm');
+    await act(async () => {
+      await runtime._importFile({ name: 'box.glb', size: 100 }, true);
+    });
+    expect(runtime._statusFilter).toBeNull();
+    expectAll();
+  });
+
+  it('切回默认模型后统计条回到全部，且运行时过滤已清空', () => {
+    const runtime = swapRuntime();
+    mount(runtime);
+    pressAlarm();
+    expect(runtime._statusFilter).toBe('alarm');
+    act(() => {
+      runtime._showDefault();
+    });
+    expect(runtime._statusFilter).toBeNull();
+    expectAll();
   });
 });

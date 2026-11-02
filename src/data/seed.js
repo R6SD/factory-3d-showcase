@@ -234,7 +234,7 @@ function normalizeRecord(r) {
   };
 }
 
-const DEVICE_STATUSES = new Set(['normal', 'alarm', 'down']);
+const DEVICE_STATUSES = new Set(['normal', 'alarm', 'down', 'idle']);
 
 function normalizeDevice(d) {
   const status = DEVICE_STATUSES.has(d?.status) ? d.status : 'normal';

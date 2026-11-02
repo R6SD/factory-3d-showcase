@@ -43,4 +43,22 @@ describe('paintEquipmentStatuses 状态过滤', () => {
     expect(running.material.emissive.getHexString()).toBe('22c55e');
     expect(plain.material).toBe(shared);
   });
+
+  it('过滤时选中的另一状态设备不套 DIM，仍是状态色', () => {
+    const shared = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x000000 });
+    const geo = new THREE.BoxGeometry(1, 1, 1);
+    const alarm = new THREE.Mesh(geo, shared);
+    alarm.userData.equipmentId = 'eq-silo-a';
+    const running = new THREE.Mesh(geo, shared);
+    running.userData.equipmentId = 'eq-conveyor';
+    const root = new THREE.Group();
+    root.add(alarm, running);
+    paintEquipmentStatuses(root, [
+      { id: 'eq-silo-a', status: 'alarm' },
+      { id: 'eq-conveyor', status: 'normal' },
+    ], 'eq-silo-a', 'normal');
+    expect(alarm.material.emissive.getHexString()).toBe('f59e0b');
+    expect(alarm.material.emissiveIntensity).toBeGreaterThan(0);
+    expect(running.material.emissive.getHexString()).toBe('22c55e');
+  });
 });

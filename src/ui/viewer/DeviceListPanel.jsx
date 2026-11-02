@@ -30,10 +30,11 @@ export function DeviceListPanel({ devices = [], selectedId = null, runtime = nul
   }, []);
 
   useEffect(() => {
-    const unsub = listen(EVENTS.ACTIVE_MODEL_CHANGE, () => {
-      setFilter(null);
-      setMissingId(null);
-      resolveRuntime(runtime)?.setStatusFilter(null);
+    // 过滤以运行时为准。导入、切回默认模型和其它换模型路径都从这里清掉统计条，不再猜事件名。
+    const unsub = listen(EVENTS.EQUIPMENT_STATUS_FILTER, (event) => {
+      const status = event.detail ?? null;
+      setFilter(status);
+      if (status == null) setMissingId(null);
     });
     return () => {
       unsub();

@@ -258,6 +258,7 @@ export function restoreStatusMaterials(root) {
  * 先恢复整棵树上的状态材质，再按 equipmentId 重新着色。
  * 只给“最近设备 id 落在 catalog 里”的网格着色，未登记的网格保持原材质。
  * filter 非空时，状态不匹配的网格套 DIM_SPEC，匹配的照常着色。
+ * 当前选中的设备不压暗，否则侧栏打开了场景里仍看不出选中了谁。
  */
 export function paintEquipmentStatuses(root, catalog, selectedId, filter = null) {
   restoreStatusMaterials(root);
@@ -268,7 +269,7 @@ export function paintEquipmentStatuses(root, catalog, selectedId, filter = null)
     const id = equipmentIdOf(node);
     if (!id || !byId.has(id)) return;
     const status = byId.get(id);
-    const dimmed = filter != null && status !== filter;
+    const dimmed = filter != null && status !== filter && id !== selectedId;
     applyMeshStatus(node, status, {
       selected: id === selectedId,
       spec: dimmed ? DIM_SPEC : undefined,
