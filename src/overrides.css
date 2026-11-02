@@ -600,7 +600,7 @@ main{padding:8px}
 .device-status-bar button i{width:8px;height:8px;border-radius:50%;background:#93a8c8;flex:none}
 .device-status-bar b{font:600 12px "JetBrains Mono",ui-monospace,"Cascadia Code",Consolas,monospace}
 .device-status-bar.is-filtering .device-status-pill:not([aria-pressed="true"]){opacity:.5}
-.device-list-panel{position:absolute;z-index:7;top:124px;left:16px;width:280px;max-height:calc(100% - 140px);display:flex;flex-direction:column;overflow:hidden;border-radius:10px;border:1px solid rgba(100,150,220,.25);background:rgba(6,16,34,.92);backdrop-filter:blur(14px);box-shadow:0 12px 36px rgba(0,0,0,.5);color:var(--text);font-family:"Noto Sans SC",sans-serif}
+.device-list-panel{position:absolute;z-index:7;top:124px;left:16px;width:280px;max-height:calc(100% - 140px);display:flex;flex-direction:column;overflow:hidden;border-radius:10px;border:1px solid rgba(100,150,220,.25);background:rgba(6,16,34,.92);backdrop-filter:blur(14px);box-shadow:0 12px 36px rgba(0,0,0,.5);color:var(--text);font-family:"Noto Sans SC",sans-serif;transition:none}
 .device-list-sort{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-bottom:1px solid rgba(100,150,220,.2);font:12px "Noto Sans SC";color:var(--muted)}
 .device-list-sort select{background:rgba(18,38,68,.8);color:var(--text);border:1px solid rgba(100,150,220,.35);border-radius:6px;padding:4px 8px;font:12px "Noto Sans SC"}
 .device-list{list-style:none;margin:0;padding:4px;overflow-x:hidden;overflow-y:auto}
@@ -621,6 +621,6 @@ main{padding:8px}
 @media (max-width:640px){
 .device-status-bar{top:68px;left:8px;right:8px;max-width:none;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
 .device-status-bar button{flex:none}
-.viewer-page .device-list-panel{left:0;right:0;top:auto;width:auto;bottom:280px;max-height:min(40vh,calc(100% - 360px));border-radius:12px 12px 0 0}
+.viewer-page .device-list-panel{left:0;right:0;top:auto;width:auto;bottom:340px;max-height:min(40vh,calc(100% - 420px));border-radius:12px 12px 0 0}
 .viewer-page .device-detail-panel{z-index:9}
 }
