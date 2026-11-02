@@ -73,6 +73,20 @@ describe('顶栏铭牌（#50）', () => {
     expect(host.querySelector('.custom-brand-icon')).toBeNull();
   });
 
+  it('按操作区宽度写下 --actions-w，窄屏铭牌据此让出时钟', () => {
+    const orig = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function getBoundingClientRect() {
+      if (this.classList?.contains('actions')) return new DOMRect(0, 0, 128.2, 32);
+      return new DOMRect();
+    };
+    try {
+      mount();
+      expect(host.querySelector('.app-header').style.getPropertyValue('--actions-w')).toBe('129px');
+    } finally {
+      Element.prototype.getBoundingClientRect = orig;
+    }
+  });
+
   it('route-chip 显示当前路由文案', () => {
     mount(baseConfig, '模型库');
     expect(host.querySelector('.route-chip').textContent).toBe('模型库');

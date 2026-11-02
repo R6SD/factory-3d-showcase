@@ -602,12 +602,17 @@ header:not(.app-header) h1{font-size:15px;white-space:nowrap;overflow:hidden;tex
 /* 铭牌脱离行高后必须占满整行，操作区显式放在第 3 列，否则会被自动排进中间列盖住标题。 */
 .header-left{grid-column:1;grid-row:1}
 .plaque{position:absolute;grid-column:1/-1;grid-row:1;left:50%;top:50%;transform:translate(-50%,-50%);width:max-content;max-width:min(46vw,calc(100% - 248px));z-index:1}
+/* 有 Logo 时铭牌变宽。按操作区实测宽度从两侧留白，标题盒在时钟前停住。 */
+.app-header:has(.custom-brand-icon) .plaque{width:auto;max-width:calc(100% - 2 * var(--actions-w, 148px) - 12px);overflow:hidden}
+.app-header:has(.custom-brand-icon) .plaque-text{flex:1 1 auto;min-width:0;overflow:hidden}
+.app-header:has(.custom-brand-icon) .plaque-title{display:block;max-width:100%}
 .plaque-title{font-size:16px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .custom-brand-icon{width:24px;height:24px;flex-basis:24px}
 .route-chip{display:none}
 .app-header .actions{grid-column:3;grid-row:1;justify-self:end;position:relative;z-index:2;flex-wrap:nowrap;gap:4px;min-width:0}
-.app-header .viewer-clock{margin:0;padding:0 2px;font-size:12px;letter-spacing:0}
-.app-header .lang-toggle{padding:4px 6px;gap:4px}
+.app-header .viewer-clock{margin:0;padding:0;font-size:11px;letter-spacing:0}
+.app-header .lang-toggle{padding:2px 4px;gap:2px}
+.app-header .lang-toggle svg{width:16px;height:16px}
 main{padding:8px}
 .viewer-top>div:first-child{min-width:0}
 /* 工具栏：不超出视口，必要时换行，并整段落在统计条上方 */
