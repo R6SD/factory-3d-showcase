@@ -51,7 +51,10 @@ export function formatBudgetCount(n) {
   return String(n);
 }
 
-/** 面板页脚。文案固定，数字只从 budget 来。 */
-export function budgetFooter(budget = PERF_BUDGET) {
-  return `预算 FPS≥${budget.fpsMin} · tris<${formatBudgetCount(budget.trisWarn)} 舒适 / <${formatBudgetCount(budget.trisMax)} 上限 · calls<${budget.drawCallsWarn}/${budget.drawCallsMax}`;
+/** 面板页脚。数字只从 budget 来；缺省词保持中文，英文由调用方传入。 */
+export function budgetFooter(budget = PERF_BUDGET, labels = {}) {
+  const prefix = labels.prefix ?? '预算';
+  const comfort = labels.comfort ?? '舒适';
+  const cap = labels.cap ?? '上限';
+  return `${prefix} FPS≥${budget.fpsMin} · tris<${formatBudgetCount(budget.trisWarn)} ${comfort} / <${formatBudgetCount(budget.trisMax)} ${cap} · calls<${budget.drawCallsWarn}/${budget.drawCallsMax}`;
 }

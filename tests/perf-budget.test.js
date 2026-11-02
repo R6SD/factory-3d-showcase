@@ -4,8 +4,10 @@
 import { createRoot } from 'react-dom/client';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Ctx } from '../src/app-context.jsx';
 import { PERF_BUDGET, budgetFooter, budgetLevel, formatBudgetCount } from '../src/scene/perf-budget.js';
 import { PerfBudgetPanel } from '../src/ui/viewer/PerfBudgetPanel.jsx';
+import { viewerCopy } from '../src/ui/viewer-strings.js';
 
 describe('PERF_BUDGET', () => {
   it('冻结架构师给出的默认工厂场景预算，避免面板和文档各写一套数字', () => {
@@ -89,6 +91,11 @@ describe('budgetFooter', () => {
       drawCallsWarn: 10,
       drawCallsMax: 20,
     })).toBe('预算 FPS≥45 · tris<100k 舒适 / <400k 上限 · calls<10/20');
+  });
+
+  it('传入英文词时只替换文案，数字仍来自 budget', () => {
+    expect(budgetFooter(PERF_BUDGET, { prefix: 'Budget', comfort: 'comfort', cap: 'cap' }))
+      .toBe('Budget FPS≥50 · tris<200k comfort / <500k cap · calls<150/300');
   });
 });
 
@@ -282,5 +289,33 @@ describe('PerfBudgetPanel', () => {
     expect(runtime.getPerf).toHaveBeenCalledTimes(2);
     expect(runtime.setView).not.toHaveBeenCalled();
     expect(runtime.updateConfig).not.toHaveBeenCalled();
+  });
+
+  it('语言为 en 时按钮、诊断行和页脚走英文文案', () => {
+    mountRuntime({
+      getFps: () => 60,
+      getPerf: () => ({ calls: 10, tris: 1000, trisTotal: 1000, rfs: 30, sfs: 0, mode: 'off' }),
+    });
+    act(() => root.unmount());
+    document.body.innerHTML = '<div class="viewer"><div id="perf-root"></div></div>';
+    root = createRoot(document.getElementById('perf-root'));
+    const copy = viewerCopy.en;
+    act(() => {
+      root.render(createElement(Ctx.Provider, { value: { config: { language: 'en' } } }, createElement(PerfBudgetPanel)));
+    });
+    const button = document.querySelector('.perf-toggle');
+    expect(button.textContent).toBe(copy.perfBudget);
+    expect(button.getAttribute('title')).toBe(copy.perfBudget);
+    act(() => {
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(row('fps').textContent).toContain(copy.perfFps);
+    expect(row('tris').textContent).toContain(copy.perfTrisTotal);
+    expect(row('drawCalls').textContent).toContain('Draw calls/frame');
+    expect(row('rfs').querySelector('span').textContent).toBe(copy.perfRender);
+    expect(row('sfs').querySelector('span').textContent).toBe(copy.perfSkip);
+    expect(row('trisFrame').querySelector('span').textContent).toBe(copy.perfTrisFrame);
+    expect(row('stereo').querySelector('span').textContent).toBe(copy.perfStereo);
+    expect(document.querySelector('.perf-overlay').textContent).toContain('Budget FPS≥50');
   });
 });

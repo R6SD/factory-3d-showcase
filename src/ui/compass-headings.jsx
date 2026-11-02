@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useContext } from 'react';
+import { Ctx } from '../app-context.jsx';
+import { viewerCopyFor } from './viewer-strings.js';
 
 /** View-box center of the compass rose. */
 export const COMPASS_CENTER = 40;
@@ -16,7 +18,7 @@ export const COMPASS_HEADINGS = Object.freeze([
   Object.freeze({ key: 'W', preset: null, title: '', x: 18, y: 40, hitRadius: 0, fontSize: 10, fill: 'rgba(205,225,255,.92)' }),
 ]);
 
-const FONT = 'JetBrains Mono,monospace';
+const FONT = 'JetBrains Mono, ui-monospace, Cascadia Code, Consolas, monospace';
 
 export function compassRimPoint(angleDeg, radius) {
   const rad = (angleDeg * Math.PI) / 180;
@@ -61,7 +63,16 @@ function HeadingText({ heading }) {
  * stay clickable even when the needle passes over them. Text stays
  * pointer-events:none; the disk is the actual target.
  */
+const TITLE_KEY = { N: 'viewFront', E: 'viewSide' };
+
+function headingTitle(heading, copy) {
+  const key = TITLE_KEY[heading.key];
+  return key ? copy[key] : heading.title;
+}
+
 export function CompassHeadingMarks({ onPreset, layer = 'label' }) {
+  const app = useContext(Ctx);
+  const copy = viewerCopyFor(app?.config?.language);
   if (layer === 'hit') {
     return COMPASS_HEADINGS.filter((heading) => heading.preset).map((heading) => (
       <circle
@@ -75,7 +86,7 @@ export function CompassHeadingMarks({ onPreset, layer = 'label' }) {
         fill="none"
         pointerEvents="all"
         style={{ cursor: 'pointer' }}
-        title={heading.title}
+        title={headingTitle(heading, copy)}
         onClick={() => onPreset?.(heading.preset)}
       />
     ));
