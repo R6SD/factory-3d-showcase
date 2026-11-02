@@ -5,7 +5,7 @@
 | 版本 | **1.4.3**（`package.json` 的 `version`；Windows 文件编号 `1.4.3.0`） |
 | 日期 | **2026-10-19** |
 | 对照基线 | Git 标签 `v1.4.2`（`14d2386`）。版本号在提交 `7c51ebc`（2026-09-01，见 `CHANGELOG.md`）升到 1.4.3，其后合入 `main` 的 PR 没有再改版本号。 |
-| 本文对应的 `main` | `12c4b25`（Merge PR #30）。`package.json` 版本仍是 1.4.3。文中「1.4.3」指 #23、#25 合入之前的行为，对应 `0dbb2cb`（Merge PR #18）。 |
+| 本文对应的 `main` | `37f548a`（Merge PR #40）。`package.json` 版本仍是 1.4.3。文中「1.4.3」指 #23、#25 合入之前的行为，对应 `0dbb2cb`（Merge PR #18）。 |
 
 本说明只记录 `v1.4.2` 之后已经出现在 `git log` 里的变更。未合并的 Issue 不写成已交付功能。
 
@@ -31,6 +31,12 @@
 | PR [#31](https://github.com/R6SD/factory-3d-showcase/pull/31) | fix: 归位动画中途改视角会被拉回；隐藏部件仍算命中 (#27) | 归位动画中途改视角会立刻取消，停在新机位；隐藏网格（自身或祖先 `visible === false`）不再挡住双击归位。#27 仅 main 曾出现，已由 #31 修复。 |
 | PR [#32](https://github.com/R6SD/factory-3d-showcase/pull/32) | docs: 标明 #27 已在 main 修复（#31） | 已知问题 #27 改为「仅 main 曾出现，已由 #31 修复」。只改文档。 |
 | PR [#30](https://github.com/R6SD/factory-3d-showcase/pull/30) | Pick equipment, tint status, and open a detail panel | 点击设备打开详情侧栏，并按状态着色（#7）。右键点已隐藏部件的原位置不再新建标签（#33）。已在 main 修复（#30）。 |
+| PR [#34](https://github.com/R6SD/factory-3d-showcase/pull/34) | docs: #30 合并后更新已知问题与未验证项 | 设备拾取侧栏随 #30 记入变更表；#33 不列为开放问题。Checklist 去掉重复的「main 上」。只改文档。 |
+| PR [#35](https://github.com/R6SD/factory-3d-showcase/pull/35) | refactor(scene): unify touch double-tap state, use moved flag for click | 触屏双击只留一份记录；鼠标、笔和触屏共用按下记录上的 `moved`，指针越过 30px 后即使松手回到起点也不拾取。 |
+| PR [#36](https://github.com/R6SD/factory-3d-showcase/pull/36) | Add a performance budget panel to the 3D viewer | 三维页增加「性能预算」面板（#8）。预算三行（帧率、三角面（模型总量）、绘制调用/帧）下面保留「渲染/秒」「跳过/秒」「三角面（每帧提交）」「立体模式」。1.4.3 仍是 **FPS** 按钮。 |
+| PR [#39](https://github.com/R6SD/factory-3d-showcase/pull/39) | fix: 罗盘点 N / E 切换前视和侧视 | 点罗盘 N 切到前视（与 F 同一机位），点 E 切到侧视（与 S 同一机位）。[#26](https://github.com/R6SD/factory-3d-showcase/issues/26) 已由 [#39](https://github.com/R6SD/factory-3d-showcase/pull/39) 修复。 |
+| PR [#38](https://github.com/R6SD/factory-3d-showcase/pull/38) | Fix narrow-screen layout so overlays stay inside the viewport | 去掉 `body` 的 `min-width: 1100px`，窄屏下性能面板、工具栏和设备详情留在视口内。[#37](https://github.com/R6SD/factory-3d-showcase/issues/37) 已由 [#38](https://github.com/R6SD/factory-3d-showcase/pull/38) 修复。 |
+| PR [#40](https://github.com/R6SD/factory-3d-showcase/pull/40) | fix(ui): screenshot icon, font fallback, and viewer i18n | 截图与全屏不再共用同一图标；无外网字体时回退系统字体；展示端关键文案中英文可用。[#11](https://github.com/R6SD/factory-3d-showcase/issues/11) 已由 [#40](https://github.com/R6SD/factory-3d-showcase/pull/40) 修复。 |
 
 展示端侧栏路由仍在 `src/app.jsx`：`/` 场地总览、`/models` 模型库、`/capacity` 产能看板、`/organization` 组织关系、`/settings` 设置中心。`/admin` 后端数据管理由 `src/app.jsx` 挂到该路径，页面在 `src/ui/admin/`。
 
@@ -38,27 +44,27 @@
 
 工作流名称是 **CI**，文件是 `.github/workflows/ci.yml`。触发条件：push 到 `main`，以及 pull request 目标分支为 `main`。作业 `test-and-build` 在 `ubuntu-latest`、Node 22 上执行 `npm ci`、`npm test`、`npm run build`。
 
-截至 2026-10-26，`main`（`12c4b25`，含 #30）最近一次 CI **成功**：
+截至 2026-10-26，`main`（`37f548a`，含 #40）最近一次 CI **成功**：
 
-- 运行：<https://github.com/R6SD/factory-3d-showcase/actions/runs/40366688343>
-- 时间：2026-10-26T17:14:07Z
+- 运行：<https://github.com/R6SD/factory-3d-showcase/actions/runs/40393247570>
+- 时间：2026-10-26T20:10:17Z
 - 结论：`success`（作业 `test-and-build`）
 
-同一次推送触发的 **Deploy GitHub Pages**（`pages.yml`，不是 `ci.yml`）失败：<https://github.com/R6SD/factory-3d-showcase/actions/runs/40366688272>。原因见下方已知问题。不要把 Pages 工作流的红叉当成 CI 未通过。
+同一次推送触发的 **Deploy GitHub Pages**（`pages.yml`，不是 `ci.yml`）失败：<https://github.com/R6SD/factory-3d-showcase/actions/runs/40393247575>。原因见下方已知问题。不要把 Pages 工作流的红叉当成 CI 未通过。
 
-下表数字来自该次 CI（`12c4b25`），不是另一次本地复跑。#30 没有验证：真机触屏（双击 / 手势）、长按出标签，以及 Electron（含 `npm run package:win`）。
+下表数字来自该次 CI（`37f548a`），不是另一次本地复跑。#30 没有验证：真机触屏（双击 / 手势）、长按出标签，以及 Electron（含 `npm run package:win`）。
 
 | 命令 | 退出码 | 结果 |
 |---|---|---|
 | `npm ci` | 0 | 安装 516 个包 |
-| `npm test` | 0 | 23 个文件、**191** 个测试通过 |
+| `npm test` | 0 | 27 个文件、**225** 个测试通过 |
 | `npm run build` | 0 | 构建成功。控制台有「chunk 大于 500 kB」警告，构建本身成功，产物在 `dist/` |
 
 ## 已知问题
 
 1. **照片管理只在桌面端。** Web 构建和 GitHub Pages 构建没有照片的浏览器回落。`/admin` → **照片库** 依赖 `GET/POST /api/photos`（Electron 本地服务）。`npm run dev` / `npm run preview` 下该接口不存在，列表为空；上传会提示「照片上传失败」。
 2. **没有 `/api` 时，Web 构建改用浏览器存储。** `GET /api/data/business`、`GET /api/config` 非成功时，业务数据写入 `localStorage` 键 `factory-business-v1`，配置写入 `factory-workbench-v4`。模型文件在 `/api/models` 不可用时写入 IndexedDB 库 `factory-model-library`。这两条接口 404 不表示页面崩溃。设置中心 → **数据与集成** 的来源文案为「浏览器本地存储」。桌面端来源文案为「本地后端服务（已落盘）」。
-3. **GitHub Pages 尚未在仓库设置里打开，预览地址还不是活的。** <https://r6sd.github.io/factory-3d-showcase/> 当前返回 HTTP 404。`main` 上最近一次 Pages 部署失败：<https://github.com/R6SD/factory-3d-showcase/actions/runs/40366688272>（`actions/configure-pages` 报 `Get Pages site failed` / `Not Found`）。需要仓库所有者在 Settings → Pages → Source 选择 **GitHub Actions** 之后才会发布。开通前失败是预期情况，本交付不改仓库设置。
+3. **GitHub Pages 尚未在仓库设置里打开，预览地址还不是活的。** <https://r6sd.github.io/factory-3d-showcase/> 当前返回 HTTP 404。`main` 上最近一次 Pages 部署失败：<https://github.com/R6SD/factory-3d-showcase/actions/runs/40393247575>（`actions/configure-pages` 报 `Get Pages site failed` / `Not Found`）。需要仓库所有者在 Settings → Pages → Source 选择 **GitHub Actions** 之后才会发布。开通前失败是预期情况，本交付不改仓库设置。
 4. **[#20](https://github.com/R6SD/factory-3d-showcase/issues/20) 坏文件提示、exceljs 分包加载失败、IndexedDB 不可用。** 1.4.3 的行为：导入 0 字节或改名的 `.xlsx` 时，提示是「未解析到有效行：需包含“姓名”列」（产出记录为「需包含“日期、姓名、产量”列」，月度计划为「需包含“月份、计划产量”列」），容易理解成缺列，而不是文件无法解析。`src/data/sheet-io.js` 的 `loadWorkbook()`（`import('exceljs')`）在 try 外面，分包加载失败时会出现 unhandled rejection。IndexedDB 不可用（如隐私模式）时同样可能出现 unhandled rejection。已在 main 修复（#25），1.4.3 仍是旧行为。`main` 上无法读取的工作簿提示「文件无法解析，请检查格式」；分包加载失败提示「表格组件加载失败，请刷新页面后重试」；IndexedDB 打不开时展示页仍能打开，并显示「本地模型库不可用，已降级为本次会话」。
 5. **[#27](https://github.com/R6SD/factory-3d-showcase/issues/27) 双击归位动画被其他视角操作拉回；隐藏部件仍算命中。** 双击空白处后，680ms 归位动画进行中（大约一秒内）再点预设视角（「顶视图」「前视图」「侧视图」「默认视角」，或 `T` / `F` / `S`）或按 `R`，下一帧会被动画拉回初始机位；隐藏网格原来的位置双击不会归位。仅 main 曾出现，已由 #31 修复。1.4.3 没有双击归位，不受 #27 影响。
 6. **[#7](https://github.com/R6SD/factory-3d-showcase/issues/7) 设备拾取、状态色和详情侧栏。** 点击设备打开详情侧栏，并按状态着色。已在 main 修复（#30）。1.4.3 点击设备不会打开侧栏。[#8](https://github.com/R6SD/factory-3d-showcase/issues/8) 性能预算面板由 [#36](https://github.com/R6SD/factory-3d-showcase/pull/36) 合入后，三维页按钮是「性能预算」，不再是 **FPS**。1.4.3 仍是 1.3.0 起的 **FPS** 性能监控，不要在 1.4.3 演示里找 #8。
