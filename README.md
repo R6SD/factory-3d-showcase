@@ -196,7 +196,7 @@ public/
   model-label-editor.js       三维悬浮标签
   model-library-storage.js    模型库持久化接口
   service-controls.js         服务退出控制
-  viewer-title-editor.js      工作台标题与品牌设置扩展
+  viewer-title-editor.js      工作台居中标题扩展（品牌图标由设置页 React 写入）
 electron/
   main.cjs             本地服务启动器与模型/标签/业务数据 API
 build/
