@@ -31,6 +31,9 @@
 | PR [#31](https://github.com/R6SD/factory-3d-showcase/pull/31) | fix: 归位动画中途改视角会被拉回；隐藏部件仍算命中 (#27) | 归位动画中途改视角会立刻取消，停在新机位；隐藏网格（自身或祖先 `visible === false`）不再挡住双击归位。#27 仅 main 曾出现，已由 #31 修复。 |
 | PR [#32](https://github.com/R6SD/factory-3d-showcase/pull/32) | docs: 标明 #27 已在 main 修复（#31） | 已知问题 #27 改为「仅 main 曾出现，已由 #31 修复」。只改文档。 |
 | PR [#30](https://github.com/R6SD/factory-3d-showcase/pull/30) | Pick equipment, tint status, and open a detail panel | 点击设备打开详情侧栏，并按状态着色（#7）。右键点已隐藏部件的原位置不再新建标签（#33）。已在 main 修复（#30）。 |
+| PR [#39](https://github.com/R6SD/factory-3d-showcase/pull/39) | fix: 罗盘点 N / E 切换前视和侧视 | 点罗盘 N 切到前视（与 F 同一机位），点 E 切到侧视（与 S 同一机位）。[#26](https://github.com/R6SD/factory-3d-showcase/issues/26) 已由 [#39](https://github.com/R6SD/factory-3d-showcase/pull/39) 修复。 |
+| PR [#38](https://github.com/R6SD/factory-3d-showcase/pull/38) | Fix narrow-screen layout so overlays stay inside the viewport | 去掉 `body` 的 `min-width: 1100px`，窄屏下性能面板、工具栏和设备详情留在视口内。[#37](https://github.com/R6SD/factory-3d-showcase/issues/37) 已由 [#38](https://github.com/R6SD/factory-3d-showcase/pull/38) 修复。 |
+| PR [#40](https://github.com/R6SD/factory-3d-showcase/pull/40) | fix(ui): screenshot icon, font fallback, and viewer i18n | 截图与全屏不再共用同一图标；无外网字体时回退系统字体；展示端关键文案中英文可用。[#11](https://github.com/R6SD/factory-3d-showcase/issues/11) 已由 [#40](https://github.com/R6SD/factory-3d-showcase/pull/40) 修复。 |
 
 展示端侧栏路由仍在 `src/app.jsx`：`/` 场地总览、`/models` 模型库、`/capacity` 产能看板、`/organization` 组织关系、`/settings` 设置中心。`/admin` 后端数据管理由 `src/app.jsx` 挂到该路径，页面在 `src/ui/admin/`。
 
