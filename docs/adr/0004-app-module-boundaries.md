@@ -81,7 +81,7 @@ ES 模块继续用 `src/events.js` 的 `EVENTS` / `dispatch` / `listen`。public
 | `factory-model-delete-file` | `MODEL_DELETE_FILE` | 模型库删除 | `model-library-storage.js` |
 | `factory-reset` | `RESET` | 场景「重置视角」按钮 | SceneRuntime |
 | `factory-viewer-title-change` | `VIEWER_TITLE_CHANGE` | `viewer-title-editor.js` | 壳内 Provider |
-| `factory-brand-icon-change` | `BRAND_ICON_CHANGE` | `viewer-title-editor.js` | 壳内 Provider |
+| `factory-brand-icon-change` | `BRAND_ICON_CHANGE` | 外部仍可派发；设置页上传改为 React 直接写 `branding.icon`（不再由 `viewer-title-editor.js` 改 DOM） | 壳内 Provider |
 | `factory-photos-changed` | `PHOTOS_CHANGED` | 照片列表刷新（`src/app.jsx`） | `usePhotoList` |
 | `factory-equipment-select` | `EQUIPMENT_SELECT` | SceneRuntime 拾取（命中 `{ id }`，空白或换模型为 `null`）；详情侧栏关闭 | 三维页详情侧栏、SceneRuntime（同步选中高亮，不重复派发） |
 

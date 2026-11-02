@@ -27,21 +27,6 @@ function updateTitle(viewer = viewerTitle()) {
   if (title && nextTitle && title.textContent !== nextTitle) title.textContent = nextTitle;
 }
 
-function updateBrandIcon() {
-  const brand = document.querySelector('.brand');
-  const icon = storedConfig().branding?.icon;
-  if (!brand) return;
-  let image = brand.querySelector('.custom-brand-icon');
-  if (!icon) { image?.remove(); return; }
-  if (!image) {
-    image = document.createElement('img');
-    image.className = 'custom-brand-icon';
-    image.alt = '品牌图标';
-    brand.prepend(image);
-  }
-  if (image.src !== icon) image.src = icon;
-}
-
 function createField(label, key, fallback) {
   const labelEl = document.createElement('label');
   labelEl.textContent = label;
@@ -61,7 +46,7 @@ function installSettingsTitleEditor() {
   const brandTab = [...document.querySelectorAll('.settings nav button')].find((button) => button.textContent.includes('品牌') || button.textContent.includes('Brand'));
   const form = settings?.querySelector('.form');
   if (!settings || !brandTab?.classList.contains('active') || !form) return false;
-  // 已安装视为完成（返回 true），与 installBrandIconEditor 保持一致，保证观察器能正常自断开
+  // 已安装视为完成（返回 true），观察器才能在设置页就绪后断开
   if (form.querySelector('.viewer-title-settings')) return true;
   const group = document.createElement('section');
   group.className = 'viewer-title-settings';
@@ -71,51 +56,13 @@ function installSettingsTitleEditor() {
   return true;
 }
 
-function installBrandIconEditor() {
-  const settings = document.querySelector('.settings');
-  const brandTab = [...document.querySelectorAll('.settings nav button')].find((button) => button.textContent.includes('品牌') || button.textContent.includes('Brand'));
-  const form = settings?.querySelector('.form');
-  if (!settings || !brandTab?.classList.contains('active') || !form) return false;
-  [...form.querySelectorAll('label')].filter((label) => label.textContent.includes('Logo 文本')).forEach((label) => label.remove());
-  if (form.querySelector('.brand-icon-settings')) return true;
-  const group = document.createElement('section');
-  group.className = 'brand-icon-settings';
-  group.innerHTML = '<h3>品牌图标</h3><p>支持 PNG、JPG、WEBP 或 SVG；建议使用正方形图片，最大 1 MB。</p>';
-  const preview = document.createElement('div');
-  preview.className = 'brand-icon-preview';
-  const image = document.createElement('img');
-  image.alt = '图标预览';
-  image.src = storedConfig().branding?.icon || '';
-  preview.append(image);
-  const input = document.createElement('input');
-  input.type = 'file'; input.accept = 'image/png,image/jpeg,image/webp,image/svg+xml';
-  input.addEventListener('change', () => {
-    const file = input.files?.[0];
-    if (!file) return;
-    if (file.size > 1024 * 1024) { alert('图标文件不能超过 1 MB'); input.value = ''; return; }
-    const reader = new FileReader();
-    reader.onload = () => { image.src = reader.result; window.dispatchEvent(new CustomEvent('factory-brand-icon-change', { detail: reader.result })); updateBrandIcon(); };
-    reader.readAsDataURL(file);
-  });
-  const reset = document.createElement('button');
-  reset.type = 'button'; reset.textContent = '恢复默认图标';
-  reset.addEventListener('click', () => { image.removeAttribute('src'); window.dispatchEvent(new CustomEvent('factory-brand-icon-change', { detail: '' })); });
-  group.append(preview, input, reset);
-  form.querySelector('label:last-of-type')?.before(group);
-  return true;
-}
-
 let _titleObserver = null;
 function _tryInitAndDisconnect() {
   updateTitle();
-  updateBrandIcon();
   const settingsDone = installSettingsTitleEditor() !== false;
-  const brandDone = installBrandIconEditor() !== false;
-  if (settingsDone && brandDone && _titleObserver) { _titleObserver.disconnect(); _titleObserver = null; }
+  if (settingsDone && _titleObserver) { _titleObserver.disconnect(); _titleObserver = null; }
 }
 _titleObserver = new MutationObserver(_tryInitAndDisconnect);
 _titleObserver.observe(document.documentElement, { childList: true, subtree: true });
 updateTitle();
-updateBrandIcon();
 installSettingsTitleEditor();
-installBrandIconEditor();
