@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import { createFactoryModel } from '../src/scene/factory/index.js';
+import { applyPreviewBackground } from '../src/scene/factory/environment.js';
 import { createBucket } from '../src/scene/factory/bucket.js';
 import { createMaterials } from '../src/scene/factory/materials.js';
 import { FOOTPRINT } from '../src/scene/factory/layout.js';
@@ -65,6 +66,28 @@ describe('createFactoryModel 网格预算与接口', () => {
     const shared = new Set(collectMeshes(first).map((mesh) => mesh.material));
     const leaked = collectMeshes(second).filter((mesh) => shared.has(mesh.material));
     expect(leaked).toHaveLength(0);
+  });
+});
+
+describe('设置页预览背景', () => {
+  it('scene.background 为 #000000，clear alpha 为 1', () => {
+    const scene = new THREE.Scene();
+    let color = null;
+    let alpha = null;
+    const renderer = {
+      setClearColor(next, nextAlpha) {
+        color = next;
+        alpha = nextAlpha;
+      },
+      getClearAlpha() {
+        return alpha;
+      },
+    };
+    applyPreviewBackground(scene, renderer);
+    expect(scene.background.isColor).toBe(true);
+    expect(scene.background.getHexString()).toBe('000000');
+    expect(color).toBe(0x000000);
+    expect(renderer.getClearAlpha()).toBe(1);
   });
 });
 
