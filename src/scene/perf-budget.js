@@ -2,9 +2,10 @@
  * 默认工厂场景的性能预算。数值的唯一来源；面板页脚与文档都引用这里，不要另写一套。
  *
  * 阈值来自 issue #8 的架构说明，没有按采样改写。
- * createFactoryModel() 的 getModelInfo 为 178 网格、5404 三角面，低于 trisWarn。
- * 无头 SwiftShader 上默认场景最近一帧绘制调用是 177，落在 warn 带（仍低于 drawCallsMax），
- * 所以没有上调 drawCallsWarn。该环境的帧率不计为调参依据。
+ * #47 默认厂房 getModelInfo 为 40 网格、5528 三角面，低于 trisWarn。
+ * 无头 SwiftShader 上面板 getPerf().calls 为 41（Three 在阴影遍之后重置计数，
+ * 这是主场景遍：网格 + 粒子）。阴影贴图重建时连投影遍合计 73，仍低于 drawCallsWarn，
+ * 所以没有改 drawCallsWarn。该环境的帧率不计为调参依据。
  *
  * 帧率只有下限：>= fpsMin 为 ok，低于为 bad。
  * 三角面与绘制调用是越低越好：< warn 为 ok，warn <= value < max 为 warn，>= max 为 bad。

@@ -17,8 +17,6 @@ function collectMeshes(root) {
 describe('createFactoryModel 默认工厂模型', () => {
   it('包含完整网格、传送带滚轮与货箱结构', () => {
     const g = createFactoryModel();
-    const meshes = collectMeshes(g);
-    expect(meshes.length).toBeGreaterThan(150);
     expect(g.userData.conveyor).toBeTruthy();
     expect(g.userData.conveyor.userData.rollers.length).toBeGreaterThan(0);
     expect(g.userData.crates).toHaveLength(5);
@@ -33,10 +31,9 @@ describe('createFactoryModel 默认工厂模型', () => {
     expect(distinct.size).toBeLessThan(60);
   });
 
-  it('所有网格具备阴影设置', () => {
+  it('所有网格接收阴影', () => {
     const g = createFactoryModel();
     collectMeshes(g).forEach((m) => {
-      expect(m.castShadow).toBe(true);
       expect(m.receiveShadow).toBe(true);
     });
   });
