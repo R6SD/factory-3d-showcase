@@ -22,6 +22,8 @@ export const EVENTS = Object.freeze({
   PHOTOS_CHANGED: 'factory-photos-changed',
   // 设备拾取：detail 为 { id } 或 null（点空白 / 关闭侧栏）
   EQUIPMENT_SELECT: 'factory-equipment-select',
+  // 状态过滤的唯一通知。detail 为状态键或 null。运行时写入过滤时派发，UI 只听这一条。
+  EQUIPMENT_STATUS_FILTER: 'factory-equipment-status-filter',
 });
 
 /** 派发自定义事件 */

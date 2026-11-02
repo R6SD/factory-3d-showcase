@@ -36,6 +36,13 @@ export const viewerCopy = {
     perfFooterPrefix: '预算',
     perfComfort: '舒适',
     perfCap: '上限',
+    deviceList: '设备列表',
+    allStatus: '全部',
+    sortBy: '排序',
+    sortStatus: '状态',
+    sortName: '名称',
+    sortOee: 'OEE',
+    notInModel: '模型中未找到',
   },
   en: {
     screenshot: 'Screenshot',
@@ -70,6 +77,13 @@ export const viewerCopy = {
     perfFooterPrefix: 'Budget',
     perfComfort: 'comfort',
     perfCap: 'cap',
+    deviceList: 'Devices',
+    allStatus: 'All',
+    sortBy: 'Sort',
+    sortStatus: 'Status',
+    sortName: 'Name',
+    sortOee: 'OEE',
+    notInModel: 'Not in model',
   },
 };
 

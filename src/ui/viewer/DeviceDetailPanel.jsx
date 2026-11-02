@@ -6,10 +6,10 @@ import { statusColor } from '../../data/selectors.js';
  * 设备详情侧栏。数据来自 selectors，不读 Three 内部状态。
  * 关闭只清选择；状态着色由 SceneRuntime 保持，直到离开三维页或换模型。
  */
-export function DeviceDetailPanel({ device, onClose }) {
+export function DeviceDetailPanel({ device, onClose, lang = 'zh' }) {
   if (!device) return null;
   const color = statusColor(device.status);
-  const label = color?.label || '未知';
+  const label = (lang === 'en' ? color?.labelEn : color?.label) || (lang === 'en' ? 'Unknown' : '未知');
   const kpi = device.kpi || {};
   const fmt = (value, suffix = '') => (value == null || value === '' ? '—' : `${value}${suffix}`);
   return (
