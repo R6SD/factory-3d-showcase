@@ -165,6 +165,71 @@ describe('SceneRuntime 巡检', () => {
     expect(Date.now() - window._carouselTs).toBeLessThan(1_000);
   });
 
+  it('切回默认模型会停巡检，之后不再飞向旧视点', () => {
+    const rt = makeLoopRuntime();
+    const phases = [];
+    rt._cb = { onLoading() {}, onTourChange(phase) { phases.push(phase); } };
+    rt._importSeq = 0;
+    rt._displayMode = 'solid';
+    rt._factory = () => new THREE.Group();
+    rt.scene = new THREE.Scene();
+    rt.scene.add(rt.model);
+    rt._dropEquipmentSelection = () => {};
+    rt._applyDeviceStatuses = () => {};
+    rt._resetPress = () => {};
+    rt._fit = () => { rt._cancelViewReset(); };
+    const oldStop = {
+      id: 'old-stop',
+      label: '旧视点',
+      position: { x: 30, y: 20, z: 40 },
+      target: { x: 0, y: 1, z: 0 },
+      equipmentId: 'eq-old',
+    };
+    const now = vi.spyOn(performance, 'now');
+    now.mockReturnValue(1_000);
+    rt._lastFrameTime = 1_000;
+    rt.camera.position.set(12, 8, 14);
+    rt.startTour([oldStop], { dwellMs: 5_000 });
+    expect(rt._tour.phase).toBe('flying');
+    expect(rt._viewReset.toPos).toEqual(oldStop.position);
+
+    rt._showDefault();
+    expect(rt._tour.phase).toBe('idle');
+    expect(phases.at(-1)).toBe('idle');
+    expect(rt._viewReset).toBeNull();
+    const held = rt.camera.position.clone();
+
+    now.mockReturnValue(1_000 + 1_200);
+    rt._loop();
+    now.mockReturnValue(1_000 + 1_200 + 5_000);
+    rt._loop();
+    expect(rt._tour.phase).toBe('idle');
+    expect(rt._viewReset).toBeNull();
+    expect(rt.camera.position.distanceTo(held)).toBeLessThan(0.05);
+    expect(rt.camera.position.distanceTo(new THREE.Vector3(30, 20, 40))).toBeGreaterThan(5);
+  });
+
+  it('工具栏重置视角和预设视角会停掉巡检，镜头不被下一段巡检拉走', () => {
+    const rt = makeLoopRuntime();
+    rt._fit = () => { rt._cancelViewReset(); };
+    const now = vi.spyOn(performance, 'now');
+    now.mockReturnValue(2_000);
+    rt.startTour([STOP], { dwellMs: 5_000 });
+    rt._onReset();
+    expect(rt._tour.phase).toBe('idle');
+    expect(rt._viewReset).toBeNull();
+
+    rt.startTour([STOP], { dwellMs: 5_000 });
+    rt.setView('top');
+    expect(rt._tour.phase).toBe('idle');
+    const held = rt.camera.position.clone();
+    now.mockReturnValue(2_000 + 1_200 + 5_000);
+    rt._loop();
+    expect(rt._tour.phase).toBe('idle');
+    expect(rt._viewReset).toBeNull();
+    expect(rt.camera.position.distanceTo(held)).toBeLessThan(0.05);
+  });
+
   it('双击归位停掉巡检，缓动终点是 home', () => {
     const rt = makeLoopRuntime();
     rt.camera.position.set(9, 9, 9);

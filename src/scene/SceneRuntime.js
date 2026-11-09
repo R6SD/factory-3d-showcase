@@ -597,6 +597,7 @@ export class SceneRuntime {
   }
 
   setView(preset) {
+    this.stopTour({ restoreView: false });
     this._cancelViewReset();
     const m = this.model;
     if (!m) return;
@@ -858,6 +859,8 @@ export class SceneRuntime {
   }
 
   _showDefault() {
+    // 换模型先停巡检，且不把镜头缓回旧模型的机位；接下来的 _fit 才是新机位。
+    this.stopTour({ restoreView: false });
     // 切回默认模型同样使在途的异步导入作废，防止其晚返回后覆盖默认场景
     this._importSeq++;
     this._cb.onLoading?.(false); // 作废在途导入时一并关闭它可能开启的加载遮罩，避免卡住
@@ -899,6 +902,7 @@ export class SceneRuntime {
   }
 
   _onReset() {
+    this.stopTour({ restoreView: false });
     this._cancelViewReset();
     this._fit(this.model);
     this._needsRender = true;
