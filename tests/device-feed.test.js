@@ -11,6 +11,7 @@ import {
   stepDevice,
 } from '../src/data/device-feed.js';
 import { mergeDevicePatches, useLiveDevices } from '../src/data/useLiveDevices.js';
+import { statusColor } from '../src/data/selectors.js';
 
 function device(partial) {
   return {
@@ -139,7 +140,7 @@ describe('createSimulatedFeed', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('注入故障立即告警，clearFault 把温度拉回 45 并回到 normal', () => {
+  it('注入故障立即告警，clearFault 还原注入前的状态和温度', () => {
     vi.useFakeTimers();
     const ledger = device({ kpi: { temp: 22 } });
     const seen = [];
@@ -158,10 +159,63 @@ describe('createSimulatedFeed', () => {
     expect(seen.at(-1)[ledger.id].alarm.code).toBe('SIM-001');
 
     feed.clearFault(ledger.id);
-    expect(seen.at(-1)[ledger.id].status).toBe('normal');
-    expect(seen.at(-1)[ledger.id].kpi.temp).toBe(45);
-    expect(seen.at(-1)[ledger.id].alarm).toBeNull();
+    const restored = mergeDevicePatches([ledger], seen.at(-1))[0];
+    expect(restored).toBe(ledger);
+    expect(restored.status).toBe('normal');
+    expect(restored.kpi.temp).toBe(22);
+    expect(restored.alarm).toBeNull();
+    expect(statusColor(restored.status).emissive).toBe('#22c55e');
     expect(vi.getTimerCount()).toBe(1);
+    feed.stop();
+  });
+
+  it('idle、down、running 注入后再恢复回到原状态、颜色和告警；重复注入或未注入时 clearFault 不报错', () => {
+    vi.useFakeTimers();
+    const running = device({ id: 'run', status: 'normal', kpi: { temp: 42, oee: 86 }, alarm: null });
+    const idle = device({ id: 'idle', status: 'idle', kpi: { temp: 36, oee: 91 }, alarm: null });
+    const down = device({
+      id: 'down',
+      status: 'down',
+      kpi: { temp: 22, oee: 41 },
+      alarm: { code: 'E-118', message: '主轴停机' },
+    });
+    const devices = [running, idle, down];
+    const feed = createSimulatedFeed(devices, { intervalMs: 2000, rng: () => 1 });
+    let latest = {};
+    feed.subscribe((patches) => { latest = patches; });
+    expect(() => feed.clearFault('run')).not.toThrow();
+    expect(() => feed.clearFault('missing')).not.toThrow();
+    expect(mergeDevicePatches(devices, latest)[0]).toBe(running);
+
+    feed.start();
+    for (const item of devices) {
+      feed.injectFault(item.id);
+      feed.injectFault(item.id);
+      const faulted = mergeDevicePatches(devices, latest).find((entry) => entry.id === item.id);
+      expect(faulted.status).toBe('alarm');
+      expect(faulted.kpi.temp).toBe(TEMP_ALARM + 8);
+      expect(faulted.alarm).toEqual({ code: 'SIM-001', message: '模拟故障' });
+      expect(statusColor(faulted.status).emissive).toBe('#f59e0b');
+      expect(item.status).not.toBe('alarm');
+
+      feed.clearFault(item.id);
+      const restored = mergeDevicePatches(devices, latest).find((entry) => entry.id === item.id);
+      expect(restored.status).toBe(item.status);
+      expect(restored.kpi.temp).toBe(item.kpi.temp);
+      expect(restored.alarm).toEqual(item.alarm);
+      expect(statusColor(restored.status).emissive).toBe(statusColor(item.status).emissive);
+    }
+
+    vi.advanceTimersByTime(2000);
+    const after = mergeDevicePatches(devices, latest);
+    const idleAfter = after.find((entry) => entry.id === 'idle');
+    const downAfter = after.find((entry) => entry.id === 'down');
+    expect(idleAfter).toBe(idle);
+    expect(idleAfter.status).toBe('idle');
+    expect(downAfter.status).toBe('down');
+    expect(downAfter.alarm).toEqual({ code: 'E-118', message: '主轴停机' });
+    expect(statusColor(downAfter.status).emissive).toBe('#ef4444');
+    expect(() => feed.clearFault('idle')).not.toThrow();
     feed.stop();
   });
 

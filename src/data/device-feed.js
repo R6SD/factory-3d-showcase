@@ -26,7 +26,6 @@ const TEMP_MIN = 20;
 const TEMP_MAX = 90;
 const OEE_MIN = 30;
 const OEE_MAX = 99;
-const RECOVER_TEMP = 45;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -105,7 +104,18 @@ export function createSimulatedFeed(devices, { intervalMs = 2000, rng = Math.ran
   /** @type {Record<string, DevicePatch>} */
   let patches = {};
   const faulted = new Set();
+  /** 注入前的覆盖层。null 表示当时还没有 patch，恢复时去掉覆盖、回到台账。 */
+  const prior = new Map();
   const listeners = new Set();
+
+  function clonePatch(patch) {
+    if (!patch || typeof patch !== 'object' || Object.keys(patch).length === 0) return null;
+    return {
+      ...patch,
+      kpi: patch.kpi ? { ...patch.kpi } : patch.kpi,
+      alarm: patch.alarm ? { ...patch.alarm } : patch.alarm,
+    };
+  }
 
   function emit() {
     for (const listener of listeners) listener(patches);
@@ -159,7 +169,10 @@ export function createSimulatedFeed(devices, { intervalMs = 2000, rng = Math.ran
 
   function injectFault(id) {
     if (id == null || id === '') return;
-    faulted.add(id);
+    if (!faulted.has(id)) {
+      prior.set(id, clonePatch(patches[id]));
+      faulted.add(id);
+    }
     const base = catalog.find((item) => item?.id === id);
     if (!base) {
       emit();
@@ -171,18 +184,11 @@ export function createSimulatedFeed(devices, { intervalMs = 2000, rng = Math.ran
 
   function clearFault(id) {
     if (id == null || id === '') return;
+    if (!faulted.has(id)) return;
     faulted.delete(id);
-    const base = catalog.find((item) => item?.id === id);
-    if (!base) {
-      emit();
-      return;
-    }
-    const cooled = applyPatch(base, patches);
-    const patch = stepDevice(
-      { ...cooled, kpi: { ...cooled.kpi, temp: RECOVER_TEMP } },
-      { rng: () => 0.5, faulted: false },
-    );
-    store(id, patch);
+    const saved = prior.get(id) ?? null;
+    prior.delete(id);
+    store(id, saved);
     emit();
   }
 
