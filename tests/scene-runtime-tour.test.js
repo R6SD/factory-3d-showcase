@@ -209,6 +209,45 @@ describe('SceneRuntime 巡检', () => {
     expect(rt.camera.position.distanceTo(new THREE.Vector3(30, 20, 40))).toBeGreaterThan(5);
   });
 
+  it.each(['t', 'f', 's', 'r', 'T', 'F', 'S', 'R'])('巡检中按 %s 后巡检停止，不再飞往下一视点', (key) => {
+    const rt = makeLoopRuntime();
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(4, 2, 6));
+    mesh.position.set(1, 1, 0);
+    rt.model.add(mesh);
+    rt.grid = { scale: { setScalar() {} }, position: { set() {} } };
+    rt._particles = { position: { set() {} }, scale: { setScalar() {} } };
+    rt._pMat = { size: 0.04 };
+    rt.sun = {
+      position: new THREE.Vector3(),
+      target: { position: new THREE.Vector3(), updateMatrixWorld() {} },
+      shadow: { camera: { near: 0.5, far: 10, updateProjectionMatrix() {} }, needsUpdate: false },
+    };
+    rt._captureHome = false;
+    const now = vi.spyOn(performance, 'now');
+    now.mockReturnValue(3_000);
+    rt._lastFrameTime = 3_000;
+    rt.camera.position.set(12, 8, 14);
+    rt.startTour([
+      STOP,
+      { id: 'next', label: '下一站', position: { x: 40, y: 10, z: -20 }, target: { x: 0, y: 1, z: 0 }, equipmentId: 'eq-next' },
+    ], { dwellMs: 5_000 });
+    expect(rt._tour.phase).toBe('flying');
+
+    rt._onKey({ key, target: { tagName: 'DIV' } });
+    expect(rt._tour.phase).toBe('idle');
+    expect(rt._viewReset).toBeNull();
+    const held = rt.camera.position.clone();
+    expect(held.distanceTo(new THREE.Vector3(40, 10, -20))).toBeGreaterThan(5);
+
+    now.mockReturnValue(3_000 + 1_200);
+    rt._loop();
+    now.mockReturnValue(3_000 + 1_200 + 5_000);
+    rt._loop();
+    expect(rt._tour.phase).toBe('idle');
+    expect(rt._viewReset).toBeNull();
+    expect(rt.camera.position.distanceTo(held)).toBeLessThan(0.05);
+  });
+
   it('工具栏重置视角和预设视角会停掉巡检，镜头不被下一段巡检拉走', () => {
     const rt = makeLoopRuntime();
     rt._fit = () => { rt._cancelViewReset(); };

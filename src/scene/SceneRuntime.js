@@ -473,8 +473,14 @@ export class SceneRuntime {
     }
   }
 
-  _fit(obj, captureHome = this._captureHome) {
+  /** 用户改机位时停巡检，不缓回巡检前的位置。拖动和缩放只暂停，不走这里。 */
+  _userTakesCamera() {
+    this.stopTour({ restoreView: false });
     this._cancelViewReset();
+  }
+
+  _fit(obj, captureHome = this._captureHome) {
+    this._userTakesCamera();
     const bounds = new THREE.Box3().setFromObject(obj);
     const size = bounds.getSize(new THREE.Vector3());
     const center = bounds.getCenter(new THREE.Vector3());
@@ -597,8 +603,7 @@ export class SceneRuntime {
   }
 
   setView(preset) {
-    this.stopTour({ restoreView: false });
-    this._cancelViewReset();
+    this._userTakesCamera();
     const m = this.model;
     if (!m) return;
     const bounds = new THREE.Box3().setFromObject(m);
@@ -690,7 +695,7 @@ export class SceneRuntime {
   }
 
   focusNode(uuid) {
-    this._cancelViewReset();
+    this._userTakesCamera();
     const m = this.model;
     if (!m) return;
     let target = null;
@@ -902,8 +907,7 @@ export class SceneRuntime {
   }
 
   _onReset() {
-    this.stopTour({ restoreView: false });
-    this._cancelViewReset();
+    this._userTakesCamera();
     this._fit(this.model);
     this._needsRender = true;
   }
@@ -1076,7 +1080,7 @@ export class SceneRuntime {
 
   _beginViewReset() {
     if (!this._homePosition || !this.camera || !this.control) return;
-    this.stopTour({ restoreView: false });
+    this._userTakesCamera();
     this._beginCameraTween(this._homePosition, this._homeTarget);
   }
 
@@ -1170,13 +1174,13 @@ export class SceneRuntime {
 
   _onKey(e) {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-    if (e.key === 'r' || e.key === 'R') {
-      this._cancelViewReset();
-      this._fit(this.model);
-      this._needsRender = true;
-    }
-    if (e.key === 'f' || e.key === 'F') { document.querySelector('.viewer-page')?.requestFullscreen?.(); }
-    if (e.key === 'l' || e.key === 'L') {
+    const key = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+    // 与工具栏同一入口：T/F/S 走 setView，R 走重置视角。全屏仍由工具栏按钮触发。
+    if (key === 't') this.setView('top');
+    else if (key === 'f') this.setView('front');
+    else if (key === 's') this.setView('side');
+    else if (key === 'r') this._onReset();
+    else if (key === 'l') {
       const v = document.querySelector('.viewer');
       if (v) {
         v.classList.toggle('labels-hidden');
@@ -1548,6 +1552,7 @@ export class SceneRuntime {
     this.camera.near = Math.max(0.01, dist / 1200);
     this.camera.far = Math.max(1000, dist * 80);
     this.camera.updateProjectionMatrix();
+    this._userTakesCamera();
     this._beginCameraTween(frame.position, frame.target);
     return true;
   }
