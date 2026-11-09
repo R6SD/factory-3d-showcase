@@ -5,7 +5,8 @@
  * Chrome 只在 TCP 调试端口 bind 成功之后才把端口写进 DevToolsActivePort。
  * bind 失败，或浏览器还停在早期初始化时，进程不退出，文件也不会出现。
  * #59 和 #62 仍在等这个文件。这里改由 puppeteer-core 用 pipe 启动系统 Chrome，
- * CDP 走管道，不再读端口文件。
+ * CDP 走管道，不再读端口文件。管道在调试服务起来之前不会有响应，默认的
+ * protocolTimeout 是 180 秒，Vitest 的 5 秒会先把用例掐掉，所以这里单独给出上限。
  */
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -85,20 +86,34 @@ function measureExpr(title, icon) {
   })()`;
 }
 
+async function stopBrowser(browser) {
+  const proc = browser.process();
+  const closed = browser.close().catch(() => {});
+  await Promise.race([
+    closed,
+    new Promise((resolve) => setTimeout(resolve, 1000)),
+  ]);
+  try { proc?.kill('SIGKILL'); } catch { /* already gone */ }
+  await closed;
+}
+
 async function withChrome(run) {
   const browser = await puppeteer.launch({
     executablePath: chromeBinary(chrome),
     headless: true,
     pipe: true,
-    timeout: 4000,
+    timeout: 15000,
+    protocolTimeout: 15000,
     defaultViewport: null,
     handleSIGINT: false,
     handleSIGTERM: false,
     handleSIGHUP: false,
-    args: ['--no-sandbox', '--disable-gpu'],
+    env: { ...process.env, DBUS_SESSION_BUS_ADDRESS: 'disabled:' },
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'],
   });
   try {
     const [tab] = await browser.pages();
+    if (!tab) throw new Error('Chrome 没有页面目标');
     const session = await tab.createCDPSession();
     const call = (method, params) => session.send(method, params);
     await call('Page.enable');
@@ -126,7 +141,7 @@ async function withChrome(run) {
     };
     await run(measure);
   } finally {
-    await browser.close().catch(() => {});
+    await stopBrowser(browser);
   }
 }
 
@@ -145,5 +160,5 @@ describe.skipIf(!chrome)('390 宽品牌图标不挡时钟', () => {
         expect(wide.gap, `width ${width} ${JSON.stringify(wide)}`).toBeGreaterThanOrEqual(0);
       }
     });
-  });
+  }, 20000);
 });
