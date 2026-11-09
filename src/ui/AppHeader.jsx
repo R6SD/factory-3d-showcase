@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Globe2 } from 'lucide-react';
+import { cssImageUrl, useBrandUrls } from './useBrandUrls.js';
 
 /** 窄屏用操作区实际宽度给居中铭牌让位，避免 Logo 把标题推进时钟。 */
 export function reserveActionsWidth(header, actions) {
@@ -13,7 +14,7 @@ export function reserveActionsWidth(header, actions) {
 export function AppHeader({ config, setConfig, routeLabel }) {
   const headerRef = useRef(null);
   const actionsRef = useRef(null);
-  const logoUrl = config.branding?.icon || '';
+  const { logoUrl, titleBgUrl } = useBrandUrls(config.branding);
   useLayoutEffect(() => {
     const header = headerRef.current;
     const actions = actionsRef.current;
@@ -26,7 +27,11 @@ export function AppHeader({ config, setConfig, routeLabel }) {
     return () => observer.disconnect();
   }, []);
   return (
-    <header ref={headerRef} className={`app-header${config.branding?.titleBg ? ' has-title-bg' : ''}`}>
+    <header
+      ref={headerRef}
+      className={`app-header${titleBgUrl ? ' has-title-bg' : ''}`}
+      style={titleBgUrl ? { '--title-bg': cssImageUrl(titleBgUrl) } : undefined}
+    >
       <div className="header-left" aria-hidden="true" />
       <div className="plaque">
         {logoUrl ? <img className="custom-brand-icon" src={logoUrl} alt="" /> : null}

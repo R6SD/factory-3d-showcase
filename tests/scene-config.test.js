@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { defaults, loadConfig, STORE_KEY } from '../src/scene/scene-config.js';
+import { defaults, loadConfig, mergeConfig, STORE_KEY } from '../src/scene/scene-config.js';
 
 // 内存版 Storage，避免依赖全局 localStorage
 function memoryStorage(initial = {}) {
@@ -80,6 +80,29 @@ describe('loadConfig', () => {
     });
     expect(loadConfig(invalid).scene.simulate).toBe(false);
     expect(loadConfig(invalid).scene.simulateMs).toBe(2000);
+  });
+
+  it('旧配置没有标题背景和主题背景时补 null，已有 dataURL 图标保留', () => {
+    const cfg = mergeConfig({ version: 4, branding: { title: '甲', icon: 'data:image/png,a' } });
+    expect(cfg.branding.title).toBe('甲');
+    expect(cfg.branding.icon).toBe('data:image/png,a');
+    expect(cfg.branding.titleBg).toBeNull();
+    expect(cfg.branding.themeBg).toBeNull();
+  });
+
+  it('idb 背景描述原样保留，导出 JSON 不含背景像素', () => {
+    const titleBg = { store: 'idb', key: 'titleBg', name: 't.png', type: 'image/png', size: 12 };
+    const themeBg = { store: 'idb', key: 'themeBg', name: 'm.webp', type: 'image/webp', size: 20 };
+    const cfg = mergeConfig({
+      version: 4,
+      branding: { icon: 'data:image/png;base64,aaaa', titleBg, themeBg },
+    });
+    expect(cfg.branding.titleBg).toEqual(titleBg);
+    expect(cfg.branding.themeBg).toEqual(themeBg);
+    const json = JSON.stringify(cfg);
+    expect(json).toContain('data:image/png;base64,aaaa');
+    expect(JSON.stringify(cfg.branding.titleBg)).not.toContain('data:image');
+    expect(JSON.stringify(cfg.branding.themeBg)).not.toContain('data:image');
   });
 
   it('用户自定义标题不被迁移逻辑覆盖', () => {

@@ -18,6 +18,8 @@ import { statusColor } from '../data/selectors.js';
 import { VIEW_RESET_DOUBLE_TAP_PX } from './pointer-slop.js';
 import { createEnvironmentMap } from './factory/environment.js';
 import { createFactoryModel } from './factory/index.js';
+import { animateRobotArm } from './factory/robot-arm.js';
+import { countTriangles } from './model-stats.js';
 
 export { createFactoryModel };
 
@@ -632,18 +634,16 @@ export class SceneRuntime {
       this._cachedModelInfoModel = null;
       return null;
     }
-    let tris = 0, meshes = 0;
+    let meshes = 0;
     const mats = new Set();
     m.traverse((o) => {
       if (o.isMesh) {
         meshes++;
-        if (o.geometry?.index) tris += o.geometry.index.count / 3;
-        else if (o.geometry?.attributes?.position) tris += o.geometry.attributes.position.count / 3;
         if (Array.isArray(o.material)) o.material.forEach((mm) => mats.add(mm.type));
         else if (o.material) mats.add(o.material.type);
       }
     });
-    const info = { meshes, tris: Math.round(tris), materials: mats.size };
+    const info = { meshes, tris: countTriangles(m), materials: mats.size };
     this._cachedModelInfo = info;
     this._cachedModelInfoModel = m;
     return info;
@@ -1125,10 +1125,10 @@ export class SceneRuntime {
     // dynamic / showcase 模式行为不变
     const envPaused = sc.display === 'static';
 
-    // Conveyor animation
+    // Conveyor animation。t 同时驱动机械臂，静态展示两边都不写。
     const convRef = envPaused ? null : this.model?.userData?.conveyor;
+    const t = performance.now() * 0.001;
     if (convRef) {
-      const t = performance.now() * 0.001;
       convRef.userData.rollers.forEach((c, i) => { c.rotation.x = t * 2 + i * 0.3; });
       // 货箱在创建时已收集，避免每帧 scene.traverse 全树
       (this.model.userData.crates || []).forEach((o) => {
@@ -1136,6 +1136,7 @@ export class SceneRuntime {
         o.position.x = -4.5 + ((t * 0.4 + (o.userData.crateOffset || 0)) % 10);
       });
     }
+    if (!envPaused) (this.model?.userData?.robots || []).forEach((arm) => animateRobotArm(arm, t));
 
     // Particles（静态模式冻结，避免无谓的 CPU 写缓冲与 GPU 重传）
     if (!envPaused) {
@@ -1292,7 +1293,7 @@ export class SceneRuntime {
     // 回到按需渲染，避免“视差开关常开”导致的逐帧空转
     const dualEye = this.stereo?.isDualEye ?? false;
     const pxSettled = !px.enabled || (!px.auto && parallaxSettled(px.curX, px.curY, px.targetX, px.targetY));
-    const hasAnim = this.mixer || this.entranceStart > 0 || this.exitingModel || (!envPaused && this.model?.userData?.conveyor);
+    const hasAnim = this.mixer || this.entranceStart > 0 || this.exitingModel || (!envPaused && this.model?.userData?.conveyor) || (!envPaused && this.model?.userData?.robots?.length);
     const doRender = shouldRenderFrame({
       needs: this._needsRender, hasAnim, dualEye,
       parallaxEnabled: px.enabled, autoSway: px.auto, settled: pxSettled,

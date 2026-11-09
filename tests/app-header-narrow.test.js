@@ -1,16 +1,28 @@
 /**
- * happy-dom 的 getBoundingClientRect 恒为 0。这里用本机 Chrome 量 390 宽铭牌和时钟的间隙。
- * 没有 Chrome 时跳过（GitHub CI 的 ubuntu 镜像不带浏览器）；本机和验收环境会跑到断言。
+ * happy-dom 的 getBoundingClientRect 恒为 0，所以用本机 Chrome 量铭牌和时钟的间隙。
+ * 没有 Chrome 时跳过。GitHub ubuntu 镜像现在自带 google-chrome，这个用例会在 CI 里真的跑。
+ *
+ * 包装脚本会把 stdout/stderr 转给 cat，调试端口的 fetch 又没有超时；页面还要再等一次
+ * Page.loadEventFired。这两处在 runner 上会一直挂着，直到撞上 Vitest 默认的 5s。
+ * stderr 接到管道时 DevTools 那行日志还会被缓冲，不能拿它当就绪信号。
+ * 这里直接启动 chrome 二进制，用可中止的 HTTP 轮询等调试端口，用 document.readyState 判断页面，
+ * 并且在删除用户目录前先杀掉整棵进程树（否则子进程还占着目录，rmSync 会 ENOTEMPTY）。
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { reserveActionsWidth } from '../src/ui/AppHeader.jsx';
 
 const chrome = ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser']
   .find((path) => existsSync(path));
+
+function chromeBinary(path) {
+  const real = realpathSync(path);
+  const sibling = ['chrome', 'chromium'].map((name) => join(dirname(real), name)).find((candidate) => existsSync(candidate));
+  return sibling || real;
+}
 
 function page(title, icon) {
   const logo = icon
@@ -33,16 +45,6 @@ ${reserveActionsWidth.toString()}
 const header = document.querySelector('.app-header');
 const actions = document.querySelector('.actions');
 reserveActionsWidth(header, actions);
-const titleBox = document.querySelector('.plaque-title').getBoundingClientRect();
-const clock = document.querySelector('.viewer-clock').getBoundingClientRect();
-const plaque = document.querySelector('.plaque').getBoundingClientRect();
-const head = header.getBoundingClientRect();
-document.documentElement.dataset.result = JSON.stringify({
-  gap: clock.left - titleBox.right,
-  center: (plaque.left + plaque.width / 2) - (head.left + head.width / 2),
-  innerWidth: window.innerWidth,
-  actionsW: header.style.getPropertyValue('--actions-w'),
-});
 </script></body></html>`;
 }
 
@@ -85,81 +87,156 @@ function measureExpr(title, icon) {
   })()`;
 }
 
+function childPids(pid) {
+  try {
+    const raw = readFileSync(`/proc/${pid}/task/${pid}/children`, 'utf8').trim();
+    if (!raw) return [];
+    return raw.split(/\s+/).flatMap((child) => {
+      const id = Number(child);
+      return [id, ...childPids(id)];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function killChrome(proc) {
+  if (!proc?.pid) return;
+  const pids = [proc.pid, ...childPids(proc.pid)];
+  for (const pid of pids.reverse()) {
+    try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+  }
+  try { process.kill(-proc.pid, 'SIGKILL'); } catch { /* group already gone */ }
+}
+
+async function removeProfile(dir) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt === 7) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+}
+
+function collectOutput(stream, bucket) {
+  if (!stream) return;
+  stream.setEncoding('utf8');
+  stream.on('data', (chunk) => {
+    bucket.text = (bucket.text + chunk).slice(-800);
+  });
+}
+
+async function waitForBrowser(port, proc, output) {
+  const deadline = Date.now() + 4000;
+  let exitCode = null;
+  proc.once('exit', (code) => { exitCode = code; });
+  while (Date.now() < deadline) {
+    if (exitCode !== null) throw new Error(`Chrome 退出 ${exitCode}\n${output.text}`);
+    try {
+      const version = await fetch(`http://127.0.0.1:${port}/json/version`, {
+        signal: AbortSignal.timeout(200),
+      }).then((response) => response.json());
+      if (version.webSocketDebuggerUrl) {
+        return String(version.webSocketDebuggerUrl).replace(/^ws:\/\/localhost\b/, 'ws://127.0.0.1');
+      }
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+  throw new Error(`Chrome 调试端口没有起来\n${output.text}`);
+}
+
+function connectWebSocket(url) {
+  const ws = new WebSocket(url);
+  const opened = new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn(value);
+    };
+    const timer = setTimeout(() => finish(reject, new Error('DevTools websocket 没有连上')), 2000);
+    ws.addEventListener('open', () => finish(resolve));
+    ws.addEventListener('error', () => finish(reject, new Error('DevTools websocket 失败')));
+  });
+  let seq = 0;
+  const pending = new Map();
+  ws.addEventListener('message', (event) => {
+    const data = typeof event.data === 'string' ? event.data : event.data.toString();
+    const msg = JSON.parse(data);
+    if (msg.id && pending.has(msg.id)) {
+      pending.get(msg.id)(msg);
+      pending.delete(msg.id);
+    }
+  });
+  const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
+    const id = ++seq;
+    const timer = setTimeout(() => reject(new Error(`CDP 超时: ${method}`)), 1500);
+    pending.set(id, (msg) => {
+      clearTimeout(timer);
+      if (msg.error) reject(new Error(`${method}: ${msg.error.message}`));
+      else resolve(msg.result);
+    });
+    const payload = { id, method, params };
+    if (sessionId) payload.sessionId = sessionId;
+    ws.send(JSON.stringify(payload));
+  });
+  return { ws, opened, send };
+}
+
 async function withChrome(run) {
   const dir = mkdtempSync(join(tmpdir(), 'plaque-chrome-'));
-  const port = 9333 + Math.floor(Math.random() * 1000);
-  const proc = spawn(chrome, [
+  const port = 20000 + Math.floor(Math.random() * 20000);
+  const proc = spawn(chromeBinary(chrome), [
     '--headless=new',
     '--disable-gpu',
     '--no-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-extensions',
+    '--disable-component-extensions-with-background-pages',
+    '--disable-background-networking',
+    '--disable-sync',
+    '--disable-default-apps',
+    '--disable-breakpad',
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--mute-audio',
+    '--disable-features=Translate,MediaRouter,DialMediaRouteProvider',
     '--remote-debugging-port=' + port,
     '--user-data-dir=' + dir,
     'about:blank',
-  ], { stdio: 'ignore' });
+  ], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
+    env: { ...process.env, DBUS_SESSION_BUS_ADDRESS: 'disabled:' },
+  });
+  const output = { text: '' };
+  collectOutput(proc.stdout, output);
+  collectOutput(proc.stderr, output);
+  let ws;
   try {
-    let version;
-    for (let i = 0; i < 50; i += 1) {
-      try {
-        version = await fetch(`http://127.0.0.1:${port}/json/version`).then((r) => r.json());
-        break;
-      } catch {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-    }
-    if (!version) throw new Error('Chrome 调试端口没有起来');
-    const ws = new WebSocket(version.webSocketDebuggerUrl);
-    await new Promise((resolve, reject) => {
-      ws.addEventListener('open', resolve);
-      ws.addEventListener('error', reject);
-    });
-    let seq = 0;
-    const pending = new Map();
-    ws.addEventListener('message', (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.id && pending.has(msg.id)) {
-        pending.get(msg.id)(msg);
-        pending.delete(msg.id);
-      }
-    });
-    const send = (method, params = {}) => new Promise((resolve) => {
-      const id = ++seq;
-      pending.set(id, resolve);
-      ws.send(JSON.stringify({ id, method, params }));
-    });
-    const file = join(dir, 'header.html');
-    writeFileSync(file, page('工厂智能可视化', true));
-    await send('Target.createTarget', { url: `file://${file}` });
-    const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then((r) => r.json());
-    const pageTarget = targets.find((target) => target.type === 'page' && target.url.startsWith('file://'));
-    const pageWs = new WebSocket(pageTarget.webSocketDebuggerUrl);
-    await new Promise((resolve, reject) => {
-      pageWs.addEventListener('open', resolve);
-      pageWs.addEventListener('error', reject);
-    });
-    let pageSeq = 0;
-    const pagePending = new Map();
-    pageWs.addEventListener('message', (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.id && pagePending.has(msg.id)) {
-        pagePending.get(msg.id)(msg);
-        pagePending.delete(msg.id);
-      }
-    });
-    const call = (method, params = {}) => new Promise((resolve) => {
-      const id = ++pageSeq;
-      pagePending.set(id, resolve);
-      pageWs.send(JSON.stringify({ id, method, params }));
-    });
+    const browserUrl = await waitForBrowser(port, proc, output);
+    const browser = connectWebSocket(browserUrl);
+    ws = browser.ws;
+    await browser.opened;
+    const { targetInfos } = await browser.send('Target.getTargets');
+    const pageTarget = targetInfos.find((target) => target.type === 'page');
+    if (!pageTarget) throw new Error('Chrome 没有页面目标');
+    const { sessionId } = await browser.send('Target.attachToTarget', { targetId: pageTarget.targetId, flatten: true });
+    const call = (method, params) => browser.send(method, params, sessionId);
     await call('Page.enable');
     await call('Runtime.enable');
-    const loaded = new Promise((resolve) => {
-      pageWs.addEventListener('message', (event) => {
-        const msg = JSON.parse(event.data);
-        if (msg.method === 'Page.loadEventFired') resolve();
-      });
+    const written = await call('Runtime.evaluate', {
+      expression: `document.open(); document.write(${JSON.stringify(page('工厂智能可视化', true))}); document.close(); document.readyState`,
+      returnByValue: true,
     });
-    await call('Page.navigate', { url: `file://${file}` });
-    await loaded;
+    if (written.exceptionDetails) throw new Error(JSON.stringify(written.exceptionDetails));
+    const ready = written.result?.value;
+    if (ready !== 'interactive' && ready !== 'complete') throw new Error(`document not ready: ${ready}`);
     const measure = async (width, title, icon) => {
       await call('Emulation.setDeviceMetricsOverride', {
         width,
@@ -171,15 +248,14 @@ async function withChrome(run) {
         expression: measureExpr(title, icon),
         returnByValue: true,
       });
-      if (evaluated.result?.exceptionDetails) throw new Error(JSON.stringify(evaluated.result.exceptionDetails));
-      return evaluated.result.result.value;
+      if (evaluated.exceptionDetails) throw new Error(JSON.stringify(evaluated.exceptionDetails));
+      return evaluated.result.value;
     };
     await run(measure);
-    pageWs.close();
-    ws.close();
   } finally {
-    proc.kill('SIGKILL');
-    rmSync(dir, { recursive: true, force: true });
+    try { ws?.close(); } catch { /* socket already closed */ }
+    killChrome(proc);
+    await removeProfile(dir);
   }
 }
 

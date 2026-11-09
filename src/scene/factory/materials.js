@@ -27,6 +27,7 @@ export function createMaterials() {
   return Object.freeze({
     steel: standard({ color: 0x8e98a4, metalness: 0.86, roughness: 0.34 }),
     paintBlue: standard({ color: 0x2d6ebd, metalness: 0.48, roughness: 0.38 }),
+    paintYellow: standard({ color: 0xe2b23a, metalness: 0.42, roughness: 0.38 }),
     concrete: standard({ color: 0x8b9198, metalness: 0.02, roughness: 0.92 }),
     floorZoneA: floor(0x2f6a52),
     floorZoneB: floor(0x3c5678),
