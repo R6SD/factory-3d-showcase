@@ -22,19 +22,34 @@ describe('createFactoryModel 默认工厂模型', () => {
     expect(g.userData.crates).toHaveLength(5);
   });
 
-  it('相同颜色/参数的网格共享同一材质实例（性能守卫：旧实现每网格一份材质）', () => {
+  it('六台设备齐全，材质实例 ≤20 且少于网格数，网格上限 ≤56', () => {
     const g = createFactoryModel();
+    const ids = new Set();
+    g.traverse((object) => {
+      if (object.userData?.equipmentId) ids.add(object.userData.equipmentId);
+    });
+    expect([...ids].sort()).toEqual([
+      'eq-bldg-mfg',
+      'eq-bldg-pack',
+      'eq-conveyor',
+      'eq-line-c',
+      'eq-silo-a',
+      'eq-silo-b',
+    ]);
     const meshes = collectMeshes(g);
-    const distinct = new Set(meshes.map((m) => m.material));
-    // 共享后独立材质数应明显少于网格数（旧实现二者相等 = 178）
+    const distinct = new Set(meshes.map((mesh) => mesh.material));
+    expect(distinct.size).toBeLessThanOrEqual(20);
     expect(distinct.size).toBeLessThan(meshes.length);
-    expect(distinct.size).toBeLessThan(60);
+    expect(meshes.length).toBeLessThanOrEqual(56);
   });
 
-  it('所有网格接收阴影', () => {
+  it('除地面、标线、玻璃、灯带外都投射阴影，并且全部接收阴影', () => {
     const g = createFactoryModel();
-    collectMeshes(g).forEach((m) => {
-      expect(m.receiveShadow).toBe(true);
+    collectMeshes(g).forEach((mesh) => {
+      const kind = mesh.name.split(':')[0];
+      const skipCast = kind === 'ground' || kind === 'mark' || kind === 'glass' || kind === 'light';
+      expect(mesh.receiveShadow).toBe(true);
+      expect(mesh.castShadow).toBe(!skipCast);
     });
   });
 });

@@ -2,10 +2,11 @@
  * 默认工厂场景的性能预算。数值的唯一来源；面板页脚与文档都引用这里，不要另写一套。
  *
  * 阈值来自 issue #8 的架构说明，没有按采样改写。
- * #47 默认厂房 getModelInfo 为 40 网格、5528 三角面，低于 trisWarn。
- * 无头 SwiftShader 上面板 getPerf().calls 为 41（Three 在阴影遍之后重置计数，
- * 这是主场景遍：网格 + 粒子）。阴影贴图重建时连投影遍合计 73，仍低于 drawCallsWarn，
- * 所以没有改 drawCallsWarn。该环境的帧率不计为调参依据。
+ * #49 默认厂房 getModelInfo 为 56 网格、86948 三角面，低于 trisWarn。
+ * 阈值没动，默认模型目标 ≤120 由 tests/factory-model.test.js 守卫。
+ * 无头 Chrome 156 + SwiftShader、1920×1080 上，面板 getPerf().calls 在标准展示和
+ * 静态展示各 10 秒内的最大值都是 57，低于 drawCallsWarn，所以没有改 drawCallsWarn。
+ * 该环境没有真 GPU，帧率不计为调参依据。
  *
  * 帧率只有下限：>= fpsMin 为 ok，低于为 bad。
  * 三角面与绘制调用是越低越好：< warn 为 ok，warn <= value < max 为 warn，>= max 为 bad。

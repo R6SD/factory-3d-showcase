@@ -541,6 +541,47 @@ describe('外载模型名称绑定与工厂打标', () => {
     expect(equipmentIdOf(named)).toBe('eq-conveyor');
   });
 
+  it('新模型四种状态、选中和过滤压暗都生效，恢复后仍是原材质实例', () => {
+    const g = createFactoryModel();
+    const catalog = [
+      { id: 'eq-silo-a', status: 'alarm' },
+      { id: 'eq-silo-b', status: 'down' },
+      { id: 'eq-bldg-mfg', status: 'idle' },
+      { id: 'eq-line-c', status: 'normal' },
+      { id: 'eq-bldg-pack', status: 'normal' },
+      { id: 'eq-conveyor', status: 'idle' },
+    ];
+    const sample = new Map();
+    g.traverse((node) => {
+      if (!node.isMesh) return;
+      const id = equipmentIdOf(node);
+      if (id && !sample.has(id)) sample.set(id, { mesh: node, original: node.material });
+    });
+    expect(sample.size).toBe(6);
+
+    paintEquipmentStatuses(g, catalog, null);
+    expect(sample.get('eq-silo-a').mesh.material.emissive.getHexString()).toBe('f59e0b');
+    expect(sample.get('eq-silo-b').mesh.material.emissive.getHexString()).toBe('ef4444');
+    expect(sample.get('eq-bldg-mfg').mesh.material.emissive.getHexString()).toBe('60a5fa');
+    expect(sample.get('eq-line-c').mesh.material.emissive.getHexString()).toBe('22c55e');
+
+    paintEquipmentStatuses(g, catalog, 'eq-silo-a', 'alarm');
+    const selected = sample.get('eq-silo-a').mesh;
+    expect(selected.material.emissive.getHexString()).toBe('f59e0b');
+    expect(selected.material.emissiveIntensity).toBeCloseTo(0.75 * SELECTED_EMISSIVE_GAIN, 5);
+    for (const id of ['eq-silo-b', 'eq-bldg-mfg', 'eq-line-c', 'eq-bldg-pack', 'eq-conveyor']) {
+      const mesh = sample.get(id).mesh;
+      expect(mesh.material.emissive.getHexString()).toBe('000000');
+      expect(mesh.material.emissiveIntensity).toBe(0);
+    }
+
+    restoreStatusMaterials(g);
+    for (const { mesh, original } of sample.values()) {
+      expect(mesh.material).toBe(original);
+      expect(mesh.userData._statusOrig).toBeUndefined();
+    }
+  });
+
   it('默认工厂打标，着色后料仓不串色，整树 clear 回到原材质', () => {
     const g = createFactoryModel();
     const ids = new Set();

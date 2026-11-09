@@ -5,6 +5,8 @@ import { applyPreviewBackground } from '../src/scene/factory/environment.js';
 import { createBucket } from '../src/scene/factory/bucket.js';
 import { createMaterials } from '../src/scene/factory/materials.js';
 import { FOOTPRINT } from '../src/scene/factory/layout.js';
+import { countTriangles } from '../src/scene/model-stats.js';
+import { SceneRuntime } from '../src/scene/SceneRuntime.js';
 
 const EQUIPMENT_IDS = [
   'eq-silo-a',
@@ -21,17 +23,85 @@ function collectMeshes(root) {
   return meshes;
 }
 
+function equipmentGroup(model, id) {
+  let group = null;
+  model.traverse((object) => {
+    if (object.userData?.equipmentId === id) group = object;
+  });
+  return group;
+}
+
 describe('createFactoryModel 网格预算与接口', () => {
-  it('Mesh ≤60、投射阴影 ≤52、材质实例 ≤20，且没有 InstancedMesh 和 Light', () => {
+  it('Mesh ≤56、投射阴影 ≤52、两者之和 + 3 ≤120，材质实例 ≤20，且没有 InstancedMesh 和 Light', () => {
     const model = createFactoryModel();
     const meshes = collectMeshes(model);
-    expect(meshes.length).toBeLessThanOrEqual(60);
-    expect(meshes.filter((mesh) => mesh.castShadow).length).toBeLessThanOrEqual(52);
+    const casting = meshes.filter((mesh) => mesh.castShadow).length;
+    expect(meshes.length).toBeLessThanOrEqual(56);
+    expect(casting).toBeLessThanOrEqual(52);
+    expect(meshes.length + casting + 3).toBeLessThanOrEqual(120);
     expect(new Set(meshes.map((mesh) => mesh.material)).size).toBeLessThanOrEqual(20);
     model.traverse((object) => {
       expect(object.isInstancedMesh).not.toBe(true);
+      expect(object.isBatchedMesh).not.toBe(true);
       expect(object.isLight).not.toBe(true);
     });
+  });
+
+  it('三角面在 5 万到 15 万之间', () => {
+    const model = createFactoryModel();
+    const tris = countTriangles(model);
+    expect(tris).toBeGreaterThanOrEqual(50_000);
+    expect(tris).toBeLessThanOrEqual(150_000);
+  });
+
+  it('预热一次后，三次建模耗时的中位数 < 300ms', () => {
+    createFactoryModel();
+    const samples = [0, 1, 2].map(() => {
+      const start = performance.now();
+      createFactoryModel();
+      return performance.now() - start;
+    });
+    samples.sort((a, b) => a - b);
+    expect(samples[1]).toBeLessThan(300);
+  });
+
+  it('每台设备 Mesh ≤9，组内没有 InstancedMesh 或 BatchedMesh', () => {
+    const model = createFactoryModel();
+    for (const id of EQUIPMENT_IDS) {
+      const group = equipmentGroup(model, id);
+      const meshes = [];
+      group.traverse((object) => {
+        if (object.isMesh) meshes.push(object);
+        expect(object.isInstancedMesh).not.toBe(true);
+        expect(object.isBatchedMesh).not.toBe(true);
+      });
+      expect(meshes.length).toBeLessThanOrEqual(9);
+      expect(meshes.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('两台机械臂、滚筒不超过 6 且共享材质，货箱相位为 0/2/4/6/8', () => {
+    const model = createFactoryModel();
+    expect(model.userData.robots).toHaveLength(2);
+    const phases = model.userData.robots.map((arm) => arm.userData.phase);
+    expect(phases[0]).not.toBe(phases[1]);
+    const rollers = model.userData.conveyor.userData.rollers;
+    expect(rollers.length).toBeGreaterThan(0);
+    expect(rollers.length).toBeLessThanOrEqual(6);
+    expect(new Set(rollers.map((roller) => roller.material)).size).toBe(1);
+    expect(model.userData.crates.map((crate) => crate.userData.crateOffset)).toEqual([0, 2, 4, 6, 8]);
+  });
+
+  it('六台设备都能算出 equipmentFrame', () => {
+    const rt = Object.create(SceneRuntime.prototype);
+    rt.model = createFactoryModel();
+    for (const id of EQUIPMENT_IDS) {
+      const frame = rt.equipmentFrame(id);
+      expect(frame).not.toBeNull();
+      expect(Number.isFinite(frame.target.x)).toBe(true);
+      expect(Number.isFinite(frame.target.y)).toBe(true);
+      expect(Number.isFinite(frame.target.z)).toBe(true);
+    }
   });
 
   it('包围盒 xz 为 18×14 ± 0.6，中心接近原点', () => {

@@ -14,6 +14,23 @@
 
 非有限数值（缺测、`NaN`、无穷）按 bad。帧率预算只有下限，所以帧率行只有 ok / bad。
 
+## 默认模型实测
+
+阈值没有改。下面是默认厂房自己的读数，用来对照「绘制调用 ≤120、三角面 5–15 万」这个更紧的目标。网格、投射阴影网格、三角面区间和建模耗时由 `tests/factory-model.test.js` 守卫。
+
+| 指标 | 实测 |
+|------|------|
+| Mesh | 56 |
+| 投影 Mesh（`castShadow === true`） | 48 |
+| 三角面（`getModelInfo().tris` / `getPerf().trisTotal`） | 86948 |
+| 绘制调用/帧，标准展示，10 秒内最大 `getPerf().calls` | 57 |
+| 绘制调用/帧，静态展示，10 秒内最大 `getPerf().calls` | 57 |
+| 每帧提交三角面，上述两次 10 秒窗口的最大值 | 86948 |
+| 建模耗时 | 66 ms（预热 1 次后 3 次：61 / 66 / 101 ms，取中位数） |
+| 帧率 | 未测（无真 GPU） |
+
+测量环境：Google Chrome 156.0.8078.47，无头，ANGLE SwiftShader（Vulkan 1.3.0 SwiftShader Device），视口 1920×1080，默认场景配置。标准展示是 `display: 'standard'`，静态展示是 `display: 'static'`。指针静止，运动视差没有离轴偏移。建模耗时是在同一浏览器里对 `createFactoryModel()` 用 `performance.now()` 打点。Electron 桌面端未测。
+
 三角面行用的是模型静态三角面 `getPerf().trisTotal`（最近一次 `getModelInfo()` 的缓存），不是 `tris`。`tris` 仍是最近一帧提交给 WebGL 的三角面，阴影等会把它抬高，不能拿来对这张表。
 
 ## 面板怎么读
