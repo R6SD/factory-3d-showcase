@@ -65,6 +65,19 @@ describe('顶栏铭牌（#50）', () => {
     expect(host.querySelector('.lucide-factory')).toBeNull();
   });
 
+  it('titleBg 有 url 时 header 带 has-title-bg，清除后变量移除', () => {
+    const { render } = mount({
+      ...baseConfig,
+      branding: { title: '甲公司', icon: '', titleBg: 'blob:http://local/title' },
+    });
+    const header = () => host.querySelector('.app-header');
+    expect(header().classList.contains('has-title-bg')).toBe(true);
+    expect(header().style.getPropertyValue('--title-bg')).toContain('blob:http://local/title');
+    render({ ...baseConfig, branding: { title: '甲公司', icon: '', titleBg: null } });
+    expect(header().classList.contains('has-title-bg')).toBe(false);
+    expect(header().style.getPropertyValue('--title-bg')).toBe('');
+  });
+
   it('plaque-title 等于 branding.title，改配置后更新', () => {
     const { render } = mount();
     expect(host.querySelector('.plaque-title').textContent).toBe(baseConfig.branding.title);
