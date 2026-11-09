@@ -10,7 +10,7 @@ export const defaults = {
   version: 4,
   language: 'zh',
   theme: 'dark',
-  branding: { title: '工厂智能可视化', icon: '' },
+  branding: { title: '工厂智能可视化', icon: '', titleBg: null, themeBg: null },
   viewer: { eyebrow: 'FACTORY DIGITAL TWIN', title: '场地总览', titleEn: 'Site Overview' },
   nav: 'mini',
   models: [],
@@ -39,9 +39,14 @@ export function mergeConfig(data) {
   // 旧版默认标题迁移为新标题
   if (viewer.title === '厂区三维工作台') viewer.title = defaults.viewer.title;
   if (viewer.titleEn === '3D Campus Workbench') viewer.titleEn = defaults.viewer.titleEn;
+  const branding = { ...defaults.branding, ...(data.branding || {}) };
   return {
     ...defaults, ...data, version: 4,
-    branding: { ...defaults.branding, ...data.branding },
+    branding: {
+      ...branding,
+      titleBg: branding.titleBg ?? null,
+      themeBg: branding.themeBg ?? null,
+    },
     viewer,
     scene: { ...defaults.scene, ...data.scene },
     carousel: { ...defaults.carousel, ...(data.carousel || {}) },
