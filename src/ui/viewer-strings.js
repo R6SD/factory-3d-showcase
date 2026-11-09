@@ -43,6 +43,12 @@ export const viewerCopy = {
     sortName: '名称',
     sortOee: 'OEE',
     notInModel: '模型中未找到',
+    tour: '巡检',
+    tourPause: '暂停',
+    tourResume: '继续',
+    tourStop: '停止',
+    tourPaused: '已暂停',
+    tourOverview: '总览',
   },
   en: {
     screenshot: 'Screenshot',
@@ -84,6 +90,12 @@ export const viewerCopy = {
     sortName: 'Name',
     sortOee: 'OEE',
     notInModel: 'Not in model',
+    tour: 'Tour',
+    tourPause: 'Pause',
+    tourResume: 'Resume',
+    tourStop: 'Stop',
+    tourPaused: 'Paused',
+    tourOverview: 'Overview',
   },
 };
 

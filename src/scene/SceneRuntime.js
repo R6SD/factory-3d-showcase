@@ -15,6 +15,7 @@ import {
   restoreStatusMaterials,
 } from './device-status.js';
 import { statusColor } from '../data/selectors.js';
+import { createTour, tourPause, tourResume, tourStart, tourStop, tourTick } from './tour.js';
 import { VIEW_RESET_DOUBLE_TAP_PX } from './pointer-slop.js';
 import { createEnvironmentMap } from './factory/environment.js';
 import { createFactoryModel } from './factory/index.js';
@@ -291,6 +292,10 @@ export class SceneRuntime {
     this._onViewResetPointerUp = this._onViewResetPointerUp.bind(this);
     this._onViewResetPointerCancel = this._onViewResetPointerCancel.bind(this);
     this._onControlStart = this._onControlStart.bind(this);
+
+    // 自动巡检。idle 时不改按需渲染；飞行靠已有的相机缓动把 _needsRender 置上。
+    this._tour = createTour([]);
+    this._tourSaved = null;
 
     this._init();
   }
@@ -738,7 +743,13 @@ export class SceneRuntime {
     r.control.enableRotate = sceneConfig.rotate;
     r.control.enableZoom = sceneConfig.zoom;
     r.control.enablePan = sceneConfig.pan;
-    r.control.autoRotate = sceneConfig.display !== 'static';
+    const spin = sceneConfig.display !== 'static';
+    if (this._tour && this._tour.phase !== 'idle') {
+      if (this._tourSaved) this._tourSaved.autoRotate = spin;
+      r.control.autoRotate = false;
+    } else {
+      r.control.autoRotate = spin;
+    }
     r.control.autoRotateSpeed = sceneConfig.rotationSpeed * (sceneConfig.display === 'showcase' ? 1.65 : 1);
     r.control.dampingFactor = sceneConfig.display === 'showcase' ? 0.085 : 0.05;
     r.grid.visible = sceneConfig.grid;
@@ -774,6 +785,7 @@ export class SceneRuntime {
       this._cb.onNotice?.('文件超过 200MB 限制');
       return;
     }
+    this.stopTour();
     // 每次导入自增序号：连续快速导入 A、B 时，只提交最后一次请求（B），先返回的 A 作废
     const seq = ++this._importSeq;
     this._cb.onLoading?.(true);
@@ -958,7 +970,89 @@ export class SceneRuntime {
   }
 
   _onControlStart() {
+    if (this._tour && (this._tour.phase === 'flying' || this._tour.phase === 'dwelling')) {
+      this.pauseTour();
+      return;
+    }
     this._cancelViewReset();
+  }
+
+  _emitTour() {
+    const tour = this._tour;
+    this._cb.onTourChange?.(tour?.phase || 'idle', tour?.index || 0);
+  }
+
+  /**
+   * @param {import('./tour.js').TourStop[]} stops
+   * @param {{ dwellMs?: number }} [options]
+   */
+  startTour(stops, { dwellMs } = {}) {
+    if (!this.camera || !this.control) return;
+    const next = tourStart(createTour(stops, { dwellMs: dwellMs ?? 5000, flyMs: 1200 }), performance.now());
+    if (next.phase === 'idle') return;
+    if (!this._tour || this._tour.phase === 'idle') {
+      this._tourSaved = {
+        pos: { x: this.camera.position.x, y: this.camera.position.y, z: this.camera.position.z },
+        target: { x: this.control.target.x, y: this.control.target.y, z: this.control.target.z },
+        autoRotate: !!this.control.autoRotate,
+      };
+    }
+    this.control.autoRotate = false;
+    this._tour = next;
+    const stop = next.stops[0];
+    this._beginCameraTween(stop.position, stop.target, next.flyMs);
+    this._emitTour();
+  }
+
+  pauseTour() {
+    if (!this._tour || (this._tour.phase !== 'flying' && this._tour.phase !== 'dwelling')) return;
+    this._tour = tourPause(this._tour, performance.now());
+    this._cancelViewReset();
+    this._emitTour();
+  }
+
+  resumeTour() {
+    if (!this._tour || this._tour.phase !== 'paused') return;
+    this._tour = tourResume(this._tour, performance.now());
+    if (this._tour.phase === 'flying') {
+      const stop = this._tour.stops[this._tour.index];
+      const elapsed = performance.now() - this._tour.phaseStart;
+      const remain = Math.max(1, this._tour.flyMs - elapsed);
+      if (stop) this._beginCameraTween(stop.position, stop.target, remain);
+    }
+    this._emitTour();
+  }
+
+  /** restoreView 为 false 时只停状态，不把相机拉回巡检前的机位（双击归位自己决定终点）。 */
+  stopTour({ restoreView = true } = {}) {
+    if (!this._tour || this._tour.phase === 'idle') return;
+    const saved = this._tourSaved;
+    this._tour = tourStop(this._tour);
+    this._tourSaved = null;
+    if (this.control && saved) this.control.autoRotate = !!saved.autoRotate;
+    dispatch(EVENTS.EQUIPMENT_SELECT, null);
+    if (restoreView && saved && this.camera && this.control) {
+      this._beginCameraTween(saved.pos, saved.target);
+    }
+    this._emitTour();
+  }
+
+  _syncTour(now) {
+    const tour = this._tour;
+    if (!tour || tour.phase === 'idle') return;
+    const prevPhase = tour.phase;
+    const prevIndex = tour.index;
+    const { tour: next, event } = tourTick(tour, now);
+    this._tour = next;
+    if (event === 'arrive') {
+      const stop = next.stops[next.index];
+      if (stop?.equipmentId) dispatch(EVENTS.EQUIPMENT_SELECT, { id: stop.equipmentId });
+    } else if (event === 'leave') {
+      dispatch(EVENTS.EQUIPMENT_SELECT, null);
+      const stop = next.stops[next.index];
+      if (stop) this._beginCameraTween(stop.position, stop.target, next.flyMs);
+    }
+    if (next.phase !== prevPhase || next.index !== prevIndex) this._emitTour();
   }
 
   _beginCameraTween(toPos, toTarget, duration = VIEW_RESET_MS) {
@@ -978,6 +1072,7 @@ export class SceneRuntime {
 
   _beginViewReset() {
     if (!this._homePosition || !this.camera || !this.control) return;
+    this.stopTour({ restoreView: false });
     this._beginCameraTween(this._homePosition, this._homeTarget);
   }
 
@@ -1120,6 +1215,7 @@ export class SceneRuntime {
     this.mixer?.update(dt);
     this.control.update();
     this._applyViewReset(frameNow);
+    this._syncTour(frameNow);
 
     // 静态展示模式（display:'static'）冻结传送带/粒子等环境动画，让画面真正静止、可空闲省电；
     // dynamic / showcase 模式行为不变
@@ -1237,8 +1333,10 @@ export class SceneRuntime {
     const car = window.__carouselConfig;
     if (car.enabled && car.modelNames && car.modelNames.length > 1) {
       const cn = Date.now();
-      if (!window._carouselTs) window._carouselTs = cn;
-      if (cn - window._carouselTs > (car.interval || 8) * 1000) {
+      if (this._tour && this._tour.phase !== 'idle') {
+        window._carouselTs = cn;
+      } else if (!window._carouselTs) window._carouselTs = cn;
+      else if (cn - window._carouselTs > (car.interval || 8) * 1000) {
         window._carouselTs = cn;
         const names = car.modelNames;
         const cur = localStorage.getItem('factory-active-model') || names[0];
@@ -1523,6 +1621,10 @@ export class SceneRuntime {
       setEquipmentPickEnabled: (enabled) => rt.setEquipmentPickEnabled(enabled),
       equipmentFrame: (id) => rt.equipmentFrame(id),
       focusEquipment: (id) => rt.focusEquipment(id),
+      startTour: (stops, options) => rt.startTour(stops, options),
+      pauseTour: () => rt.pauseTour(),
+      resumeTour: () => rt.resumeTour(),
+      stopTour: () => rt.stopTour(),
       setStatusFilter: (status) => rt.setStatusFilter(status),
       raycastVisible: (clientX, clientY) => rt.raycastVisible(clientX, clientY),
       isHierarchyVisible: (object) => isHierarchyVisible(object),
@@ -1532,6 +1634,7 @@ export class SceneRuntime {
   // ── Cleanup ─────────────────────────────────────────────────────
 
   dispose() {
+    this.stopTour({ restoreView: false });
     this._unsubImport?.();
     this._unsubShowDefault?.();
     this._unsubReset?.();

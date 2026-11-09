@@ -25,9 +25,22 @@ export const defaults = {
     stereoMode: 'parallax', parallaxStrength: .4, parallaxAuto: false,
     // 查看页 UI 层流星氛围背景（纯 CSS、不影响 WebGL），可在“模型与场景”设置中关闭
     fxMeteors: true,
+    // 自动巡检每个视点的停留秒数，2–30
+    tourDwell: 5,
   },
   carousel: { enabled: false, interval: 8, modelNames: [] },
 };
+
+/** 巡检停留秒数。非数字回默认，超出 2–30 则钳住，并取整。 */
+export function clampTourDwell(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return defaults.scene.tourDwell;
+  return Math.min(30, Math.max(2, Math.round(n)));
+}
+
+function clampScene(scene) {
+  return { ...scene, tourDwell: clampTourDwell(scene.tourDwell) };
+}
 
 /**
  * 把任意持久化数据合并为合法配置（深合并关键嵌套层，补齐新字段，迁移旧标题）。
@@ -48,7 +61,7 @@ export function mergeConfig(data) {
       themeBg: branding.themeBg ?? null,
     },
     viewer,
-    scene: { ...defaults.scene, ...data.scene },
+    scene: clampScene({ ...defaults.scene, ...data.scene }),
     carousel: { ...defaults.carousel, ...(data.carousel || {}) },
   };
 }
