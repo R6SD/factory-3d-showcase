@@ -12,6 +12,14 @@ export const BRAND_UNAVAILABLE = '本地素材库不可用';
 
 const ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const sessionUrls = new Map();
+let idbQueue = Promise.resolve();
+
+/** 同一库上的开关库串行，避免两个槽同时写入时读到空结果。 */
+function enqueue(task) {
+  const run = idbQueue.then(task, task);
+  idbQueue = run.then(() => undefined, () => undefined);
+  return run;
+}
 
 function normalizeType(file) {
   const raw = String(file?.type || '').toLowerCase();
@@ -115,8 +123,12 @@ function blobFromRecord(record) {
   return new Blob([buffer], { type: record.type || '' });
 }
 
-export async function putBrandAsset(key, blob) {
-  if (!BRAND_KEYS.includes(key)) throw new Error('bad brand key');
+export function putBrandAsset(key, blob) {
+  if (!BRAND_KEYS.includes(key)) return Promise.reject(new Error('bad brand key'));
+  return enqueue(() => putBrandAssetNow(key, blob));
+}
+
+async function putBrandAssetNow(key, blob) {
   try {
     const buffer = await blobBytes(blob);
     const db = await openDatabase();
@@ -130,8 +142,12 @@ export async function putBrandAsset(key, blob) {
   }
 }
 
-export async function getBrandAsset(key) {
-  if (!BRAND_KEYS.includes(key)) return null;
+export function getBrandAsset(key) {
+  if (!BRAND_KEYS.includes(key)) return Promise.resolve(null);
+  return enqueue(() => getBrandAssetNow(key));
+}
+
+async function getBrandAssetNow(key) {
   try {
     const db = await openDatabase();
     const record = await new Promise((resolve, reject) => {
@@ -147,9 +163,13 @@ export async function getBrandAsset(key) {
   }
 }
 
-export async function deleteBrandAsset(key) {
+export function deleteBrandAsset(key) {
   forgetSessionUrl(key);
-  if (!BRAND_KEYS.includes(key)) return;
+  if (!BRAND_KEYS.includes(key)) return Promise.resolve();
+  return enqueue(() => deleteBrandAssetNow(key));
+}
+
+async function deleteBrandAssetNow(key) {
   try {
     const db = await openDatabase();
     const tx = db.transaction(BRAND_STORE, 'readwrite');

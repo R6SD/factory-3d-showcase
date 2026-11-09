@@ -76,6 +76,17 @@ describe('brand-assets IndexedDB', () => {
     expect(new Uint8Array(await (await getBrandAsset('themeBg')).arrayBuffer())).toEqual(theme);
   });
 
+  it('两个槽同时写入后都能读回', async () => {
+    const title = new Uint8Array([1, 2, 3]);
+    const theme = new Uint8Array([4, 5, 6]);
+    await Promise.all([
+      putBrandAsset('titleBg', new Blob([title], { type: 'image/png' })),
+      putBrandAsset('themeBg', new Blob([theme], { type: 'image/webp' })),
+    ]);
+    expect(new Uint8Array(await (await getBrandAsset('titleBg')).arrayBuffer())).toEqual(title);
+    expect(new Uint8Array(await (await getBrandAsset('themeBg')).arrayBuffer())).toEqual(theme);
+  });
+
   it('IndexedDB 打不开时提示本地素材库不可用', async () => {
     const seen = [];
     const onEvent = (event) => seen.push(event.detail);
