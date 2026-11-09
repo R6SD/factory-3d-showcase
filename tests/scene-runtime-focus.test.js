@@ -1,9 +1,9 @@
 /**
  * @vitest-environment happy-dom
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
-import { SceneRuntime } from '../src/scene/SceneRuntime.js';
+import { SceneRuntime, createFactoryModel } from '../src/scene/SceneRuntime.js';
 
 function frameRuntime() {
   const rt = Object.create(SceneRuntime.prototype);
@@ -34,6 +34,86 @@ function frameRuntime() {
   rt._equipmentCatalog = null;
   return { rt, mesh };
 }
+
+function loopStub(model, display) {
+  const rt = Object.create(SceneRuntime.prototype);
+  rt.model = model;
+  rt._sceneConfig = { display, sunAzimuth: 45, sunElevation: 60 };
+  rt._lastFrameTime = performance.now();
+  rt.mixer = null;
+  rt.control = { update() {} };
+  rt._viewReset = null;
+  rt.entranceStart = 0;
+  rt.exitingModel = null;
+  rt._press = { current: 0, target: 0, velocity: 0 };
+  rt._pressActive = false;
+  rt._baseCameraZoom = 1;
+  rt._baseModelScale = new THREE.Vector3(1, 1, 1);
+  rt.camera = {
+    zoom: 1,
+    updateProjectionMatrix() {},
+    position: new THREE.Vector3(),
+    quaternion: new THREE.Quaternion(),
+  };
+  rt.sun = { position: { set() {} } };
+  rt._pCount = 0;
+  rt._pGeo = { attributes: { position: { array: new Float32Array(0), needsUpdate: false } } };
+  rt._pSpeed = new Float32Array(0);
+  rt._frameCount = 0;
+  rt._lastFpsTime = performance.now();
+  rt._currentFps = 0;
+  rt._parallax = { enabled: false, targetX: 0, targetY: 0, curX: 0, curY: 0, strength: 0, auto: false };
+  rt._renderedFrames = 0;
+  rt._skippedFrames = 0;
+  rt._needsRender = false;
+  rt.stereo = null;
+  rt.renderer = {
+    shadowMap: {},
+    render() {},
+    info: { render: { calls: 0, triangles: 0 } },
+  };
+  rt._scheduleFrame = () => {};
+  window.__carouselConfig = { enabled: false };
+  return rt;
+}
+
+function jointSnapshot(model) {
+  return model.userData.robots.map((arm) => {
+    const { base, shoulder, elbow } = arm.userData.joints;
+    return [base.rotation.y, shoulder.rotation.z, elbow.rotation.z];
+  });
+}
+
+describe('SceneRuntime 机械臂动画', () => {
+  it('static 模式下不持续渲染，两帧之间机械臂角度不变', () => {
+    const model = createFactoryModel();
+    const rt = loopStub(model, 'static');
+    const before = jointSnapshot(model);
+    const now = vi.spyOn(performance, 'now');
+    now.mockReturnValue(1_000);
+    rt._lastFrameTime = 1_000;
+    rt._loop();
+    now.mockReturnValue(2_400);
+    rt._loop();
+    now.mockRestore();
+    expect(rt._renderedFrames).toBe(0);
+    expect(rt._skippedFrames).toBe(2);
+    expect(jointSnapshot(model)).toEqual(before);
+  });
+
+  it('非 static 时机械臂角度会变，并且因为有动画而提交渲染', () => {
+    const model = createFactoryModel();
+    const rt = loopStub(model, 'standard');
+    const before = jointSnapshot(model);
+    const now = vi.spyOn(performance, 'now');
+    now.mockReturnValue(1_500);
+    rt._lastFrameTime = 1_000;
+    rt._loop();
+    now.mockRestore();
+    expect(rt._renderedFrames).toBe(1);
+    expect(jointSnapshot(model)).not.toEqual(before);
+  });
+});
 
 describe('SceneRuntime 设备取景与状态过滤', () => {
   it('equipmentFrame 的 target 是可见设备包围盒中心，未知或隐藏 id 返回 null', () => {

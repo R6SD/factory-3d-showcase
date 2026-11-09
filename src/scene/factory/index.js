@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createBucket } from './bucket.js';
 import { createMaterials } from './materials.js';
+import { buildAssemblyLine, buildConveyor, buildMfgHall, buildPackArea, buildSilo } from './equipment.js';
 import { AUX_BUILDING, DEVICE_LAYOUT, DEVICE_NAMES } from './layout.js';
 import {
   floorMarking,
@@ -158,76 +159,6 @@ function addEnvironment(root, materials) {
   addMeshes(root, env.build('env'));
 }
 
-function addBuilding(root, materials, id) {
-  const layout = DEVICE_LAYOUT[id];
-  const group = new THREE.Group();
-  group.name = DEVICE_NAMES[id];
-  group.userData.equipmentId = id;
-  group.position.set(layout.x, 0, layout.z);
-  const bucket = createBucket(materials);
-  const body = new THREE.BoxGeometry(layout.w, layout.h, layout.d);
-  body.translate(0, layout.h / 2, 0);
-  bucket.add('wall', body);
-  const roof = new THREE.BoxGeometry(layout.w + 0.12, 0.12, layout.d + 0.12);
-  roof.translate(0, layout.h + 0.06, 0);
-  bucket.add('paintBlue', roof);
-  addMeshes(group, bucket.build(id));
-  root.add(group);
-}
-
-function addSilo(root, materials, id) {
-  const layout = DEVICE_LAYOUT[id];
-  const group = new THREE.Group();
-  group.name = DEVICE_NAMES[id];
-  group.userData.equipmentId = id;
-  group.position.set(layout.x, 0, layout.z);
-  const bucket = createBucket(materials);
-  bucket.add('stainless', uprightCylinder(layout.r, layout.r, layout.h, 0, 0, 0, 24));
-  bucket.add('paintBlue', uprightCylinder(layout.r * 1.05, layout.r * 1.05, 0.16, 0, 0, layout.h, 24));
-  addMeshes(group, bucket.build(id));
-  root.add(group);
-}
-
-function addConveyor(root, materials) {
-  const layout = DEVICE_LAYOUT['eq-conveyor'];
-  const group = new THREE.Group();
-  group.name = DEVICE_NAMES['eq-conveyor'];
-  group.userData.equipmentId = 'eq-conveyor';
-  group.position.set(layout.x, 0, layout.z);
-  const length = layout.length;
-  const bucket = createBucket(materials);
-  for (const z of [-0.82, 0.82]) {
-    bucket.add('steel', wallPanel(length, 0.14, 0.1, 0, 0.36, z));
-  }
-  for (let i = 0; i < 5; i++) {
-    const x = -5 + i * 2.5;
-    for (const z of [-0.82, 0.82]) {
-      bucket.add('steel', wallPanel(0.1, 0.32, 0.1, x, 0.16, z));
-    }
-  }
-  bucket.add('rubber', wallPanel(length - 0.15, 0.06, 1.42, 0, 0.3, 0));
-  addMeshes(group, bucket.build('eq-conveyor'));
-
-  const rollers = [];
-  for (let i = 0; i < 6; i++) {
-    const roller = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.09, 0.09, 1.5, 12),
-      materials.stainless,
-    );
-    roller.name = `eq-conveyor:roller-${i}`;
-    roller.position.set(-5 + i * 2, 0.16, 0);
-    roller.rotation.z = Math.PI / 2;
-    roller.castShadow = true;
-    roller.receiveShadow = true;
-    roller.userData.roller = true;
-    group.add(roller);
-    rollers.push(roller);
-  }
-  group.userData.rollers = rollers;
-  root.add(group);
-  root.userData.conveyor = group;
-}
-
 function addCrates(root, materials) {
   const crates = [];
   for (let i = 0; i < 5; i++) {
@@ -255,12 +186,33 @@ export function createFactoryModel() {
   addShell(root, materials);
   addGround(root, materials);
   addEnvironment(root, materials);
-  addSilo(root, materials, 'eq-silo-a');
-  addSilo(root, materials, 'eq-silo-b');
-  addBuilding(root, materials, 'eq-bldg-mfg');
-  addBuilding(root, materials, 'eq-line-c');
-  addBuilding(root, materials, 'eq-bldg-pack');
-  addConveyor(root, materials);
+  const siloA = DEVICE_LAYOUT['eq-silo-a'];
+  const siloB = DEVICE_LAYOUT['eq-silo-b'];
+  root.add(buildSilo(materials, {
+    id: 'eq-silo-a',
+    name: DEVICE_NAMES['eq-silo-a'],
+    radius: siloA.r,
+    height: siloA.h,
+    x: siloA.x,
+    z: siloA.z,
+  }));
+  root.add(buildSilo(materials, {
+    id: 'eq-silo-b',
+    name: DEVICE_NAMES['eq-silo-b'],
+    radius: siloB.r,
+    height: siloB.h,
+    x: siloB.x,
+    z: siloB.z,
+  }));
+  const mfg = buildMfgHall(materials, DEVICE_LAYOUT['eq-bldg-mfg']);
+  const line = buildAssemblyLine(materials, DEVICE_LAYOUT['eq-line-c']);
+  root.add(mfg, line, buildPackArea(materials, DEVICE_LAYOUT['eq-bldg-pack']));
+  const conveyorLayout = DEVICE_LAYOUT['eq-conveyor'];
+  const conveyor = buildConveyor(materials, { length: conveyorLayout.length });
+  conveyor.position.set(conveyorLayout.x, 0, conveyorLayout.z);
+  root.add(conveyor);
+  root.userData.conveyor = conveyor;
   addCrates(root, materials);
+  root.userData.robots = [mfg.userData.robot, line.userData.robot];
   return root;
 }
