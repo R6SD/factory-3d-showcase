@@ -4,12 +4,12 @@
  *
  * 包装脚本会把 stdout/stderr 转给 cat，调试端口的 fetch 又没有超时；页面还要再等一次
  * Page.loadEventFired。这两处在 runner 上会一直挂着，直到撞上 Vitest 默认的 5s。
- * stderr 接到管道时 DevTools 那行日志还会被缓冲，不能拿它当就绪信号。
- * 这里直接启动 chrome 二进制，用可中止的 HTTP 轮询等调试端口，用 document.readyState 判断页面，
- * 并且在删除用户目录前先杀掉整棵进程树（否则子进程还占着目录，rmSync 会 ENOTEMPTY）。
+ * 指定 --remote-debugging-port 时，127.0.0.1 和 ::1 都绑不上就不会开调试服务，进程也不退出。
+ * CI 上那个随机端口经常绑不上，于是只能干等。端口写 0 让系统分配，真正的端口记在
+ * 用户目录的 DevToolsActivePort 里。stderr 落到文件，起不来时把 Chrome 的日志和退出码带出来。
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -121,32 +121,62 @@ async function removeProfile(dir) {
   }
 }
 
-function collectOutput(stream, bucket) {
-  if (!stream) return;
-  stream.setEncoding('utf8');
-  stream.on('data', (chunk) => {
-    bucket.text = (bucket.text + chunk).slice(-800);
-  });
+function chromeLog(logPath) {
+  try {
+    return readFileSync(logPath, 'utf8').slice(-800);
+  } catch {
+    return '';
+  }
 }
 
-async function waitForBrowser(port, proc, output) {
-  const deadline = Date.now() + 4000;
-  let exitCode = null;
-  proc.once('exit', (code) => { exitCode = code; });
-  while (Date.now() < deadline) {
-    if (exitCode !== null) throw new Error(`Chrome 退出 ${exitCode}\n${output.text}`);
+function readActivePort(dir) {
+  try {
+    const [portLine, pathLine = ''] = readFileSync(join(dir, 'DevToolsActivePort'), 'utf8').split('\n');
+    const port = Number(portLine.trim());
+    if (!port) return null;
+    return { port, path: pathLine.trim() };
+  } catch {
+    return null;
+  }
+}
+
+async function browserVersion(port) {
+  const hosts = [`127.0.0.1:${port}`, `[::1]:${port}`];
+  let lastError = '';
+  for (const host of hosts) {
     try {
-      const version = await fetch(`http://127.0.0.1:${port}/json/version`, {
-        signal: AbortSignal.timeout(200),
-      }).then((response) => response.json());
+      const version = await fetch(`http://${host}/json/version`, {
+        signal: AbortSignal.timeout(500),
+      }).then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      });
       if (version.webSocketDebuggerUrl) {
         return String(version.webSocketDebuggerUrl).replace(/^ws:\/\/localhost\b/, 'ws://127.0.0.1');
       }
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 20));
+    } catch (error) {
+      lastError = error?.cause?.code || error?.name || String(error);
     }
   }
-  throw new Error(`Chrome 调试端口没有起来\n${output.text}`);
+  return { error: lastError };
+}
+
+async function waitForBrowser(dir, proc, logPath) {
+  const deadline = Date.now() + 4000;
+  let exitCode = null;
+  proc.once('exit', (code) => { exitCode = code; });
+  let active = null;
+  while (Date.now() < deadline) {
+    if (exitCode !== null) throw new Error(`Chrome 退出 ${exitCode}\n${chromeLog(logPath)}`);
+    active = readActivePort(dir);
+    if (active) {
+      const wsUrl = await browserVersion(active.port);
+      if (typeof wsUrl === 'string') return wsUrl;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  const where = active ? `DevToolsActivePort=${active.port} ${active.path}` : '没有 DevToolsActivePort';
+  throw new Error(`Chrome 调试端口没有起来 (${where})\n${chromeLog(logPath)}`);
 }
 
 function connectWebSocket(url) {
@@ -190,7 +220,8 @@ function connectWebSocket(url) {
 
 async function withChrome(run) {
   const dir = mkdtempSync(join(tmpdir(), 'plaque-chrome-'));
-  const port = 20000 + Math.floor(Math.random() * 20000);
+  const logPath = join(dir, 'chrome-stderr.log');
+  const logFd = openSync(logPath, 'w');
   const proc = spawn(chromeBinary(chrome), [
     '--headless=new',
     '--disable-gpu',
@@ -206,20 +237,18 @@ async function withChrome(run) {
     '--no-default-browser-check',
     '--mute-audio',
     '--disable-features=Translate,MediaRouter,DialMediaRouteProvider',
-    '--remote-debugging-port=' + port,
+    '--remote-debugging-port=0',
     '--user-data-dir=' + dir,
     'about:blank',
   ], {
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['ignore', 'ignore', logFd],
     detached: true,
     env: { ...process.env, DBUS_SESSION_BUS_ADDRESS: 'disabled:' },
   });
-  const output = { text: '' };
-  collectOutput(proc.stdout, output);
-  collectOutput(proc.stderr, output);
+  closeSync(logFd);
   let ws;
   try {
-    const browserUrl = await waitForBrowser(port, proc, output);
+    const browserUrl = await waitForBrowser(dir, proc, logPath);
     const browser = connectWebSocket(browserUrl);
     ws = browser.ws;
     await browser.opened;
