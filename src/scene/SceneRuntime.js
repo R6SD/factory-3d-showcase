@@ -187,7 +187,7 @@ export function setMeshDisplayMode(o, mode, pointSize = 0.03) {
 export class SceneRuntime {
   constructor(container, callbacks = {}) {
     this._root = container;
-    this._cb = callbacks; // { onNotice, onLoading, onDragOver, onModelLoaded }
+    this._cb = callbacks; // { onNotice, onLoading, onLoadProgress, onDragOver, onModelLoaded }
     this._sceneConfig = null;
 
     // Three.js objects
@@ -779,7 +779,9 @@ export class SceneRuntime {
     this._cb.onLoading?.(true);
     if (!silent) this._cb.onNotice?.(`正在加载 ${file.name}…`);
     try {
-      const loaded = await loadModelFile(file);
+      const loaded = await loadModelFile(file, {
+        onProgress: (p) => { if (seq === this._importSeq) this._cb.onLoadProgress?.(p); },
+      });
       // 等待解析期间又发起了更新的导入（或切回默认模型）：本次结果已过期，释放 GPU 资源后直接放弃
       if (seq !== this._importSeq) {
         this._disposeObject(loaded.object);
@@ -841,7 +843,10 @@ export class SceneRuntime {
       }
     } finally {
       // 加载指示也只由最新请求收尾，避免过期请求提前关掉仍在进行的加载动画
-      if (seq === this._importSeq) this._cb.onLoading?.(false);
+      if (seq === this._importSeq) {
+        this._cb.onLoading?.(false);
+        this._cb.onLoadProgress?.(null);
+      }
     }
   }
 
@@ -849,6 +854,7 @@ export class SceneRuntime {
     // 切回默认模型同样使在途的异步导入作废，防止其晚返回后覆盖默认场景
     this._importSeq++;
     this._cb.onLoading?.(false); // 作废在途导入时一并关闭它可能开启的加载遮罩，避免卡住
+    this._cb.onLoadProgress?.(null);
     if (this.model) {
       this._dropEquipmentSelection();
       this.exitingModel = this.model;
