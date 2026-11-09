@@ -4,7 +4,8 @@
  *
  * 包装脚本会把 stdout/stderr 转给 cat，调试端口的 fetch 又没有超时；页面还要再等一次
  * Page.loadEventFired。这两处在 runner 上会一直挂着，直到撞上 Vitest 默认的 5s。
- * 这里直接启动 chrome 二进制，等它自己打印 DevTools 地址，用 document.readyState 判断页面，
+ * stderr 接到管道时 DevTools 那行日志还会被缓冲，不能拿它当就绪信号。
+ * 这里直接启动 chrome 二进制，用可中止的 HTTP 轮询等调试端口，用 document.readyState 判断页面，
  * 并且在删除用户目录前先杀掉整棵进程树（否则子进程还占着目录，rmSync 会 ENOTEMPTY）。
  */
 import { spawn } from 'node:child_process';
@@ -120,27 +121,32 @@ async function removeProfile(dir) {
   }
 }
 
-function waitForDevtools(proc) {
-  return new Promise((resolve, reject) => {
-    let stderr = '';
-    let settled = false;
-    const finish = (fn, value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      fn(value);
-    };
-    const timer = setTimeout(() => {
-      finish(reject, new Error(`Chrome 调试端口没有起来\n${stderr.slice(-400)}`));
-    }, 3000);
-    proc.stderr.setEncoding('utf8');
-    proc.stderr.on('data', (chunk) => {
-      stderr += chunk;
-      const match = stderr.match(/DevTools listening on (ws:\/\/\S+)/);
-      if (match) finish(resolve, match[1].replace(/^ws:\/\/localhost\b/, 'ws://127.0.0.1'));
-    });
-    proc.once('exit', (code) => finish(reject, new Error(`Chrome 退出 ${code}\n${stderr.slice(-400)}`)));
+function collectOutput(stream, bucket) {
+  if (!stream) return;
+  stream.setEncoding('utf8');
+  stream.on('data', (chunk) => {
+    bucket.text = (bucket.text + chunk).slice(-800);
   });
+}
+
+async function waitForBrowser(port, proc, output) {
+  const deadline = Date.now() + 4000;
+  let exitCode = null;
+  proc.once('exit', (code) => { exitCode = code; });
+  while (Date.now() < deadline) {
+    if (exitCode !== null) throw new Error(`Chrome 退出 ${exitCode}\n${output.text}`);
+    try {
+      const version = await fetch(`http://127.0.0.1:${port}/json/version`, {
+        signal: AbortSignal.timeout(200),
+      }).then((response) => response.json());
+      if (version.webSocketDebuggerUrl) {
+        return String(version.webSocketDebuggerUrl).replace(/^ws:\/\/localhost\b/, 'ws://127.0.0.1');
+      }
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+  throw new Error(`Chrome 调试端口没有起来\n${output.text}`);
 }
 
 function connectWebSocket(url) {
@@ -184,6 +190,7 @@ function connectWebSocket(url) {
 
 async function withChrome(run) {
   const dir = mkdtempSync(join(tmpdir(), 'plaque-chrome-'));
+  const port = 20000 + Math.floor(Math.random() * 20000);
   const proc = spawn(chromeBinary(chrome), [
     '--headless=new',
     '--disable-gpu',
@@ -199,17 +206,20 @@ async function withChrome(run) {
     '--no-default-browser-check',
     '--mute-audio',
     '--disable-features=Translate,MediaRouter,DialMediaRouteProvider',
-    '--remote-debugging-port=0',
+    '--remote-debugging-port=' + port,
     '--user-data-dir=' + dir,
     'about:blank',
   ], {
-    stdio: ['ignore', 'ignore', 'pipe'],
+    stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
     env: { ...process.env, DBUS_SESSION_BUS_ADDRESS: 'disabled:' },
   });
+  const output = { text: '' };
+  collectOutput(proc.stdout, output);
+  collectOutput(proc.stderr, output);
   let ws;
   try {
-    const browserUrl = await waitForDevtools(proc);
+    const browserUrl = await waitForBrowser(port, proc, output);
     const browser = connectWebSocket(browserUrl);
     ws = browser.ws;
     await browser.opened;
