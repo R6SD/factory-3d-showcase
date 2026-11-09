@@ -43,6 +43,10 @@ export const viewerCopy = {
     sortName: '名称',
     sortOee: 'OEE',
     notInModel: '模型中未找到',
+    liveSim: '模拟数据',
+    liveSimInterval: '频率',
+    injectFault: '注入故障',
+    clearFault: '恢复',
   },
   en: {
     screenshot: 'Screenshot',
@@ -84,6 +88,10 @@ export const viewerCopy = {
     sortName: 'Name',
     sortOee: 'OEE',
     notInModel: 'Not in model',
+    liveSim: 'Live sim',
+    liveSimInterval: 'Interval',
+    injectFault: 'Inject fault',
+    clearFault: 'Recover',
   },
 };
 

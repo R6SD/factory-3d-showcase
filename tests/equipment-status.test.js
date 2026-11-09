@@ -590,6 +590,22 @@ describe('设备详情面板', () => {
     expect(en).toContain('Running');
     expect(html).toContain('86');
     expect(html).toContain('无活动告警');
+    expect(html).not.toContain('注入故障');
     expect(DeviceDetailPanel({ device: null, onClose() {} })).toBeNull();
+  });
+
+  it('只在传入故障回调时显示注入故障，已注入时改为恢复', () => {
+    const onInjectFault = vi.fn();
+    const onClearFault = vi.fn();
+    const idle = renderToStaticMarkup(DeviceDetailPanel({
+      device: conveyor, onClose() {}, onInjectFault, onClearFault, faulted: false,
+    }));
+    expect(idle).toContain('注入故障');
+    expect(idle).not.toContain('>恢复<');
+    const faulted = renderToStaticMarkup(DeviceDetailPanel({
+      device: conveyor, onClose() {}, lang: 'en', onInjectFault, onClearFault, faulted: true,
+    }));
+    expect(faulted).toContain('Recover');
+    expect(faulted).not.toContain('Inject fault');
   });
 });
