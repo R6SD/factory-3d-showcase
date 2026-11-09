@@ -49,6 +49,10 @@ export const viewerCopy = {
     tourStop: '停止',
     tourPaused: '已暂停',
     tourOverview: '总览',
+    liveSim: '模拟数据',
+    liveSimInterval: '频率',
+    injectFault: '注入故障',
+    clearFault: '恢复',
   },
   en: {
     screenshot: 'Screenshot',
@@ -96,6 +100,10 @@ export const viewerCopy = {
     tourStop: 'Stop',
     tourPaused: 'Paused',
     tourOverview: 'Overview',
+    liveSim: 'Live sim',
+    liveSimInterval: 'Interval',
+    injectFault: 'Inject fault',
+    clearFault: 'Recover',
   },
 };
 

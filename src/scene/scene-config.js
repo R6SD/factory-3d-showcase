@@ -6,6 +6,19 @@
 export const STORE_KEY = 'factory-workbench-v4';
 export const LEGACY_STORE_KEY = 'factory-workbench-v3';
 
+const SIMULATE_INTERVALS = [1000, 2000, 5000];
+
+function normalizeScene(scene) {
+  const merged = { ...defaults.scene, ...(scene && typeof scene === 'object' ? scene : {}) };
+  const ms = Number(merged.simulateMs);
+  return {
+    ...merged,
+    simulate: merged.simulate === true,
+    simulateMs: SIMULATE_INTERVALS.includes(ms) ? ms : defaults.scene.simulateMs,
+    tourDwell: clampTourDwell(merged.tourDwell),
+  };
+}
+
 export const defaults = {
   version: 4,
   language: 'zh',
@@ -27,6 +40,8 @@ export const defaults = {
     fxMeteors: true,
     // 自动巡检每个视点的停留秒数，2–30
     tourDwell: 5,
+    // 本地模拟器开关和节拍。实时读数不进这份配置，只留在内存覆盖层。
+    simulate: false, simulateMs: 2000,
   },
   carousel: { enabled: false, interval: 8, modelNames: [] },
 };
@@ -36,10 +51,6 @@ export function clampTourDwell(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return defaults.scene.tourDwell;
   return Math.min(30, Math.max(2, Math.round(n)));
-}
-
-function clampScene(scene) {
-  return { ...scene, tourDwell: clampTourDwell(scene.tourDwell) };
 }
 
 /**
@@ -61,7 +72,7 @@ export function mergeConfig(data) {
       themeBg: branding.themeBg ?? null,
     },
     viewer,
-    scene: clampScene({ ...defaults.scene, ...data.scene }),
+    scene: normalizeScene(data.scene),
     carousel: { ...defaults.carousel, ...(data.carousel || {}) },
   };
 }

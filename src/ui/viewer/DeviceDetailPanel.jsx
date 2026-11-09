@@ -1,17 +1,20 @@
 import React from 'react';
 import { X } from 'lucide-react';
 import { statusColor } from '../../data/selectors.js';
+import { viewerCopyFor } from '../viewer-strings.js';
 
 /**
  * 设备详情侧栏。数据来自 selectors，不读 Three 内部状态。
  * 关闭只清选择；状态着色由 SceneRuntime 保持，直到离开三维页或换模型。
  */
-export function DeviceDetailPanel({ device, onClose, lang = 'zh' }) {
+export function DeviceDetailPanel({ device, onClose, lang = 'zh', onInjectFault, onClearFault, faulted = false }) {
   if (!device) return null;
   const color = statusColor(device.status);
   const label = (lang === 'en' ? color?.labelEn : color?.label) || (lang === 'en' ? 'Unknown' : '未知');
   const kpi = device.kpi || {};
+  const copy = viewerCopyFor(lang);
   const fmt = (value, suffix = '') => (value == null || value === '' ? '—' : `${value}${suffix}`);
+  const showFault = typeof onInjectFault === 'function' && typeof onClearFault === 'function';
   return (
     <div className="device-detail-panel" role="dialog" aria-label="设备详情" data-equipment-id={device.id || ''}>
       <div className="device-detail-head">
@@ -29,6 +32,13 @@ export function DeviceDetailPanel({ device, onClose, lang = 'zh' }) {
       {device.alarm
         ? <p className="device-alarm"><b>{device.alarm.code}</b> {device.alarm.message}</p>
         : <p className="device-alarm quiet">无活动告警</p>}
+      {showFault && (
+        <div className="device-fault-actions">
+          {faulted
+            ? <button type="button" onClick={onClearFault}>{copy.clearFault}</button>
+            : <button type="button" onClick={onInjectFault}>{copy.injectFault}</button>}
+        </div>
+      )}
     </div>
   );
 }

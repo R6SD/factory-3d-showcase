@@ -23,6 +23,8 @@ describe('scene-config 默认值契约', () => {
     expect(defaults.scene.shadowSoftness / 0.2).toBeCloseTo(Math.round(defaults.scene.shadowSoftness / 0.2), 5);
     expect(defaults.scene.ambientIntensity).toBeCloseTo(0.6, 5);
     expect(defaults.scene.sunIntensity).toBeCloseTo(1.4, 5);
+    expect(defaults.scene.simulate).toBe(false);
+    expect(defaults.scene.simulateMs).toBe(2000);
     expect(defaults.version).toBe(4);
     expect(defaults.scene.tourDwell).toBe(5);
   });
@@ -85,6 +87,20 @@ describe('loadConfig', () => {
     const cfg = loadConfig(storage);
     expect(cfg.viewer.title).toBe(defaults.viewer.title);
     expect(cfg.viewer.titleEn).toBe(defaults.viewer.titleEn);
+  });
+
+  it('simulate 只接受 true，simulateMs 只接受 1s/2s/5s', () => {
+    const kept = memoryStorage({
+      [STORE_KEY]: JSON.stringify({ version: 4, scene: { simulate: true, simulateMs: 5000 } }),
+    });
+    expect(loadConfig(kept).scene.simulate).toBe(true);
+    expect(loadConfig(kept).scene.simulateMs).toBe(5000);
+
+    const invalid = memoryStorage({
+      [STORE_KEY]: JSON.stringify({ version: 4, scene: { simulate: 'yes', simulateMs: 1500 } }),
+    });
+    expect(loadConfig(invalid).scene.simulate).toBe(false);
+    expect(loadConfig(invalid).scene.simulateMs).toBe(2000);
   });
 
   it('旧配置没有标题背景和主题背景时补 null，已有 dataURL 图标保留', () => {
