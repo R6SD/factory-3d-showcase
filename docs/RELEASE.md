@@ -5,7 +5,7 @@
 | 版本 | **1.4.3**（`package.json` 的 `version`；Windows 文件编号 `1.4.3.0`） |
 | 日期 | **2026-10-19** |
 | 对照基线 | Git 标签 `v1.4.2`（`14d2386`）。版本号在提交 `7c51ebc`（2026-09-01，见 `CHANGELOG.md`）升到 1.4.3，其后合入 `main` 的 PR 没有再改版本号。 |
-| 本文对应的 `main` | `6351e62`（Merge PR #57）。`package.json` 版本仍是 1.4.3。文中「1.4.3」指 #23、#25 合入之前的行为，对应 `0dbb2cb`（Merge PR #18）。 |
+| 本文对应的 `main` | `3aafd3f`（Merge PR #58）。`package.json` 版本仍是 1.4.3。文中「1.4.3」指 #23、#25 合入之前的行为，对应 `0dbb2cb`（Merge PR #18）。 |
 
 本说明只记录 `v1.4.2` 之后已经出现在 `git log` 里的变更。未合并的 Issue 不写成已交付功能。
 
@@ -41,6 +41,8 @@
 | PR [#54](https://github.com/R6SD/factory-3d-showcase/pull/54) | feat: 顶栏铭牌改版 (#50) | 顶栏去掉默认工厂图标。应用名称作为工业铭牌居中；有品牌图标时 Logo 贴在标题左侧，没有则纯字居中。路由名降为右侧小标签。[#50](https://github.com/R6SD/factory-3d-showcase/issues/50) 已由 [#54](https://github.com/R6SD/factory-3d-showcase/pull/54) 修复。 |
 | PR [#55](https://github.com/R6SD/factory-3d-showcase/pull/55) | feat: 精细化厂房外壳与 PMREM 光照 (#47) | 默认厂房改为程序化外壳：钢柱、屋架、檩条，不铺屋面板；地面接收阴影，并画分区和标线。环境光用 RoomEnvironment + PMREM，背景仍是纯黑。[#47](https://github.com/R6SD/factory-3d-showcase/issues/47) 已由 [#55](https://github.com/R6SD/factory-3d-showcase/pull/55) 修复。 |
 | PR [#57](https://github.com/R6SD/factory-3d-showcase/pull/57) | Add title and theme background slots stored in IndexedDB | 设置「品牌与外观」把标题背景 `titleBg`（只铺顶栏底板）和主题背景 `themeBg`（壳层背景，不盖三维画布）分开存进 IndexedDB，可导入 PNG/JPG/WEBP 或清除回默认，导出不含图片像素，同页和 README 写清大标题、可选 Logo 与两槽的用途和推荐尺寸。[#51](https://github.com/R6SD/factory-3d-showcase/issues/51)、[#52](https://github.com/R6SD/factory-3d-showcase/issues/52) 已由 [#57](https://github.com/R6SD/factory-3d-showcase/pull/57) 修复。 |
+| PR [#59](https://github.com/R6SD/factory-3d-showcase/pull/59) | test: fix app-header-narrow CI timeout | 改 `tests/app-header-narrow.test.js`：直接启动 `chrome`，用可中止的请求轮询调试端口，页面改看 `document.readyState`，不再把「默认标题和短标题与时钟的间隙都 ≥ 0，无图标时铭牌仍居中」挂到 Vitest 默认 5000ms。这条超时原先把 CI 和 Pages 跑红。 |
+| PR [#58](https://github.com/R6SD/factory-3d-showcase/pull/58) | 精细化六台设备并守住性能预算 | 默认厂房六台设备改为分设备的程序化网格（料仓、传送带、主厂房、总装线、包装车间）。点选按设备打开详情，状态色和过滤压暗按设备生效；静态展示时机械臂停住。标准展示和静态展示的绘制调用/帧，10 秒内最大都是 57。与 [#57](https://github.com/R6SD/factory-3d-showcase/pull/57) 的标题背景、主题背景一起留在 `main`，背景槽不盖三维画布。[#48](https://github.com/R6SD/factory-3d-showcase/issues/48)、[#49](https://github.com/R6SD/factory-3d-showcase/issues/49) 已由 [#58](https://github.com/R6SD/factory-3d-showcase/pull/58) 修复。 |
 
 展示端侧栏路由仍在 `src/app.jsx`：`/` 场地总览、`/models` 模型库、`/capacity` 产能看板、`/organization` 组织关系、`/settings` 设置中心。`/admin` 后端数据管理由 `src/app.jsx` 挂到该路径，页面在 `src/ui/admin/`。
 
@@ -48,21 +50,21 @@
 
 工作流名称是 **CI**，文件是 `.github/workflows/ci.yml`。触发条件：push 到 `main`，以及 pull request 目标分支为 `main`。作业 `test-and-build` 在 `ubuntu-latest`、Node 22 上执行 `npm ci`、`npm test`、`npm run build`。
 
-截至 2026-11-09，`main`（`6351e62`，含 #57）最近一次 CI **成功**：
+截至 2026-11-09，`main`（`3aafd3f`，含 #58）最近一次 CI **失败**：
 
-- 运行：<https://github.com/R6SD/factory-3d-showcase/actions/runs/42656628633>
-- 时间：2026-11-09T16:37:18Z
-- 结论：`success`（作业 `test-and-build`）
+- 运行：<https://github.com/R6SD/factory-3d-showcase/actions/runs/42660789152>
+- 时间：2026-11-09T17:02:59Z
+- 结论：`failure`（作业 `test-and-build`）
 
-同一次推送触发的 **Deploy GitHub Pages**（`pages.yml`，不是 `ci.yml`）失败：<https://github.com/R6SD/factory-3d-showcase/actions/runs/42656628886>。这次 `ci.yml` 的 `npm test` 通过了。`pages.yml` 在 Test 步失败：`tests/app-header-narrow.test.js` 的「默认标题和短标题与时钟的间隙都 ≥ 0，无图标时铭牌仍居中」5000ms 超时（36 个文件里 1 个失败、35 个通过，265 个测试里 1 个失败、264 个通过）。Build 和 Setup Pages 被跳过，这次没有跑到 `Get Pages site failed`。Pages 仍未开通，站点 404，见下方已知问题。
+同一次推送触发的 **Deploy GitHub Pages**（`pages.yml`，不是 `ci.yml`）失败：<https://github.com/R6SD/factory-3d-showcase/actions/runs/42660789165>。这次 `ci.yml` 的 `npm test` 是 37 个文件、276 个测试：275 个通过，1 个失败。失败项是 `tests/app-header-narrow.test.js` 的「默认标题和短标题与时钟的间隙都 ≥ 0，无图标时铭牌仍居中」，错误是「Chrome 调试端口没有起来」，不是 5000ms 超时。`npm run build` 被跳过。`pages.yml` 的 Test 和 Build 通过，失败在 Setup Pages（`actions/configure-pages` 报 `Get Pages site failed` / `Not Found`）。Pages 仍未开通，站点 404，见下方已知问题。
 
-下表数字来自该次 CI（`6351e62`），不是另一次本地复跑。#30 没有验证：真机触屏（双击 / 手势）、长按出标签，以及 Electron（含 `npm run package:win`）。
+下表数字来自在同一提交 `3aafd3f` 上的本地复跑（`npm ci && npm test && npm run build`），不是上面那次 CI。#30 没有验证：真机触屏（双击 / 手势）、长按出标签，以及 Electron（含 `npm run package:win`）。
 
 | 命令 | 退出码 | 结果 |
 |---|---|---|
 | `npm ci` | 0 | 安装 516 个包 |
-| `npm test` | 0 | 36 个文件、265 个测试：**265** 个通过。`tests/app-header-narrow.test.js` 的「默认标题和短标题与时钟的间隙都 ≥ 0，无图标时铭牌仍居中」用时 2459ms，没有 5000ms 超时。 |
-| `npm run build` | 0 | 构建完成，7.77s |
+| `npm test` | 0 | 37 个文件、276 个测试：**276** 个通过。 |
+| `npm run build` | 0 | 构建完成，5.86s |
 
 ## 已知问题
 
