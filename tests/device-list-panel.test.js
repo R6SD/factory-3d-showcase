@@ -171,6 +171,25 @@ describe('换模型后统计条跟着运行时清过滤', () => {
     vi.restoreAllMocks();
   });
 
+  it('开始巡检时关掉已经打开的设备列表', () => {
+    mount();
+    act(() => {
+      document.querySelector('.device-list-toggle').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(document.querySelector('.device-list-panel')).not.toBeNull();
+    act(() => {
+      root.render(createElement(DeviceListPanel, {
+        devices,
+        selectedId: null,
+        runtime: { focusEquipment() { return true; }, setStatusFilter() {} },
+        t,
+        lang: 'zh',
+        closeSignal: 1,
+      }));
+    });
+    expect(document.querySelector('.device-list-panel')).toBeNull();
+  });
+
   it('本地导入后统计条回到全部，且运行时过滤已清空', async () => {
     const object = new THREE.Group();
     object.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial()));

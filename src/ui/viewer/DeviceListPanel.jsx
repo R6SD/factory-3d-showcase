@@ -16,7 +16,7 @@ function resolveRuntime(runtime) {
  * 设备统计条常驻，列表面板由工具栏开关。
  * 入参只收 devices 数组；点行仍走 EQUIPMENT_SELECT，再 focusEquipment。
  */
-export function DeviceListPanel({ devices = [], selectedId = null, runtime = null, t, lang = 'zh' }) {
+export function DeviceListPanel({ devices = [], selectedId = null, runtime = null, t, lang = 'zh', closeSignal = 0 }) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState(null);
   const [sortKey, setSortKey] = useState('status');
@@ -28,6 +28,11 @@ export function DeviceListPanel({ devices = [], selectedId = null, runtime = nul
   useLayoutEffect(() => {
     setToolbar(document.querySelector('.viewer .view-actions'));
   }, []);
+
+  useEffect(() => {
+    if (!closeSignal) return;
+    setOpen(false);
+  }, [closeSignal]);
 
   useEffect(() => {
     // 过滤以运行时为准。导入、切回默认模型和其它换模型路径都从这里清掉统计条，不再猜事件名。

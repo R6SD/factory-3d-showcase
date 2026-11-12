@@ -15,6 +15,7 @@ import {
   restoreStatusMaterials,
 } from './device-status.js';
 import { statusColor } from '../data/selectors.js';
+import { createTour, tourPause, tourResume, tourStart, tourStop, tourTick } from './tour.js';
 import { VIEW_RESET_DOUBLE_TAP_PX } from './pointer-slop.js';
 import { createEnvironmentMap } from './factory/environment.js';
 import { createFactoryModel } from './factory/index.js';
@@ -292,6 +293,13 @@ export class SceneRuntime {
     this._onViewResetPointerCancel = this._onViewResetPointerCancel.bind(this);
     this._onControlStart = this._onControlStart.bind(this);
 
+    // 自动巡检。idle 时不改按需渲染；飞行靠已有的相机缓动把 _needsRender 置上。
+    this._tour = createTour([]);
+    this._tourSaved = null;
+    // 只有巡检自己派发的选中才算巡检弹出的卡片。用户再选时这个标记清掉，stopTour 不再关那张卡。
+    this._tourOpenedCard = false;
+    this._selectionFromTour = false;
+
     this._init();
   }
 
@@ -468,8 +476,14 @@ export class SceneRuntime {
     }
   }
 
-  _fit(obj, captureHome = this._captureHome) {
+  /** 用户改机位时停巡检，不缓回巡检前的位置。拖动和缩放只暂停，不走这里。 */
+  _userTakesCamera() {
+    this.stopTour({ restoreView: false });
     this._cancelViewReset();
+  }
+
+  _fit(obj, captureHome = this._captureHome) {
+    this._userTakesCamera();
     const bounds = new THREE.Box3().setFromObject(obj);
     const size = bounds.getSize(new THREE.Vector3());
     const center = bounds.getCenter(new THREE.Vector3());
@@ -592,7 +606,7 @@ export class SceneRuntime {
   }
 
   setView(preset) {
-    this._cancelViewReset();
+    this._userTakesCamera();
     const m = this.model;
     if (!m) return;
     const bounds = new THREE.Box3().setFromObject(m);
@@ -684,7 +698,7 @@ export class SceneRuntime {
   }
 
   focusNode(uuid) {
-    this._cancelViewReset();
+    this._userTakesCamera();
     const m = this.model;
     if (!m) return;
     let target = null;
@@ -738,7 +752,13 @@ export class SceneRuntime {
     r.control.enableRotate = sceneConfig.rotate;
     r.control.enableZoom = sceneConfig.zoom;
     r.control.enablePan = sceneConfig.pan;
-    r.control.autoRotate = sceneConfig.display !== 'static';
+    const spin = sceneConfig.display !== 'static';
+    if (this._tour && this._tour.phase !== 'idle') {
+      if (this._tourSaved) this._tourSaved.autoRotate = spin;
+      r.control.autoRotate = false;
+    } else {
+      r.control.autoRotate = spin;
+    }
     r.control.autoRotateSpeed = sceneConfig.rotationSpeed * (sceneConfig.display === 'showcase' ? 1.65 : 1);
     r.control.dampingFactor = sceneConfig.display === 'showcase' ? 0.085 : 0.05;
     r.grid.visible = sceneConfig.grid;
@@ -774,6 +794,7 @@ export class SceneRuntime {
       this._cb.onNotice?.('文件超过 200MB 限制');
       return;
     }
+    this.stopTour();
     // 每次导入自增序号：连续快速导入 A、B 时，只提交最后一次请求（B），先返回的 A 作废
     const seq = ++this._importSeq;
     this._cb.onLoading?.(true);
@@ -846,6 +867,8 @@ export class SceneRuntime {
   }
 
   _showDefault() {
+    // 换模型先停巡检，且不把镜头缓回旧模型的机位；接下来的 _fit 才是新机位。
+    this.stopTour({ restoreView: false });
     // 切回默认模型同样使在途的异步导入作废，防止其晚返回后覆盖默认场景
     this._importSeq++;
     this._cb.onLoading?.(false); // 作废在途导入时一并关闭它可能开启的加载遮罩，避免卡住
@@ -887,7 +910,7 @@ export class SceneRuntime {
   }
 
   _onReset() {
-    this._cancelViewReset();
+    this._userTakesCamera();
     this._fit(this.model);
     this._needsRender = true;
   }
@@ -958,7 +981,106 @@ export class SceneRuntime {
   }
 
   _onControlStart() {
+    if (this._tour && (this._tour.phase === 'flying' || this._tour.phase === 'dwelling')) {
+      this.pauseTour();
+      return;
+    }
     this._cancelViewReset();
+  }
+
+  _emitTour() {
+    const tour = this._tour;
+    this._cb.onTourChange?.(tour?.phase || 'idle', tour?.index || 0);
+  }
+
+  /**
+   * @param {import('./tour.js').TourStop[]} stops
+   * @param {{ dwellMs?: number }} [options]
+   */
+  startTour(stops, { dwellMs } = {}) {
+    if (!this.camera || !this.control) return;
+    const next = tourStart(createTour(stops, { dwellMs: dwellMs ?? 5000, flyMs: 1200 }), performance.now());
+    if (next.phase === 'idle') return;
+    if (!this._tour || this._tour.phase === 'idle') {
+      this._tourSaved = {
+        pos: { x: this.camera.position.x, y: this.camera.position.y, z: this.camera.position.z },
+        target: { x: this.control.target.x, y: this.control.target.y, z: this.control.target.z },
+        autoRotate: !!this.control.autoRotate,
+      };
+    }
+    this.control.autoRotate = false;
+    this._tour = next;
+    const stop = next.stops[0];
+    this._beginCameraTween(stop.position, stop.target, next.flyMs);
+    this._emitTour();
+  }
+
+  pauseTour() {
+    if (!this._tour || (this._tour.phase !== 'flying' && this._tour.phase !== 'dwelling')) return;
+    this._tour = tourPause(this._tour, performance.now());
+    this._cancelViewReset();
+    this._emitTour();
+  }
+
+  resumeTour() {
+    if (!this._tour || this._tour.phase !== 'paused') return;
+    this._tour = tourResume(this._tour, performance.now());
+    if (this._tour.phase === 'flying') {
+      const stop = this._tour.stops[this._tour.index];
+      const elapsed = performance.now() - this._tour.phaseStart;
+      const remain = Math.max(1, this._tour.flyMs - elapsed);
+      if (stop) this._beginCameraTween(stop.position, stop.target, remain);
+    }
+    this._emitTour();
+  }
+
+  /** restoreView 为 false 时只停状态，不把相机拉回巡检前的机位（双击归位自己决定终点）。 */
+  stopTour({ restoreView = true } = {}) {
+    if (!this._tour || this._tour.phase === 'idle') return;
+    const saved = this._tourSaved;
+    this._tour = tourStop(this._tour);
+    this._tourSaved = null;
+    if (this.control && saved) this.control.autoRotate = !!saved.autoRotate;
+    // 只收起巡检弹出的卡片。用户自己点中的设备留给详情面板。
+    if (this._tourOpenedCard) {
+      this._tourOpenedCard = false;
+      this._dispatchEquipmentSelect(null, true);
+    }
+    if (restoreView && saved && this.camera && this.control) {
+      this._beginCameraTween(saved.pos, saved.target);
+    }
+    this._emitTour();
+  }
+
+  _dispatchEquipmentSelect(detail, fromTour = false) {
+    this._selectionFromTour = fromTour;
+    try {
+      dispatch(EVENTS.EQUIPMENT_SELECT, detail);
+    } finally {
+      this._selectionFromTour = false;
+    }
+  }
+
+  _syncTour(now) {
+    const tour = this._tour;
+    if (!tour || tour.phase === 'idle') return;
+    const prevPhase = tour.phase;
+    const prevIndex = tour.index;
+    const { tour: next, event } = tourTick(tour, now);
+    this._tour = next;
+    if (event === 'arrive') {
+      const stop = next.stops[next.index];
+      if (stop?.equipmentId) {
+        this._tourOpenedCard = true;
+        this._dispatchEquipmentSelect({ id: stop.equipmentId }, true);
+      }
+    } else if (event === 'leave') {
+      this._tourOpenedCard = false;
+      this._dispatchEquipmentSelect(null, true);
+      const stop = next.stops[next.index];
+      if (stop) this._beginCameraTween(stop.position, stop.target, next.flyMs);
+    }
+    if (next.phase !== prevPhase || next.index !== prevIndex) this._emitTour();
   }
 
   _beginCameraTween(toPos, toTarget, duration = VIEW_RESET_MS) {
@@ -978,6 +1100,7 @@ export class SceneRuntime {
 
   _beginViewReset() {
     if (!this._homePosition || !this.camera || !this.control) return;
+    this._userTakesCamera();
     this._beginCameraTween(this._homePosition, this._homeTarget);
   }
 
@@ -1071,13 +1194,16 @@ export class SceneRuntime {
 
   _onKey(e) {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-    if (e.key === 'r' || e.key === 'R') {
-      this._cancelViewReset();
-      this._fit(this.model);
-      this._needsRender = true;
+    const key = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+    // T/S 与工具栏同一入口走 setView，R 走重置视角。F 仍切全屏；巡检中这四键都会停巡检。
+    if (key === 't') this.setView('top');
+    else if (key === 'f') {
+      document.querySelector('.viewer-page')?.requestFullscreen?.();
+      if (this._tour && this._tour.phase !== 'idle') this._userTakesCamera();
     }
-    if (e.key === 'f' || e.key === 'F') { document.querySelector('.viewer-page')?.requestFullscreen?.(); }
-    if (e.key === 'l' || e.key === 'L') {
+    else if (key === 's') this.setView('side');
+    else if (key === 'r') this._onReset();
+    else if (key === 'l') {
       const v = document.querySelector('.viewer');
       if (v) {
         v.classList.toggle('labels-hidden');
@@ -1120,6 +1246,7 @@ export class SceneRuntime {
     this.mixer?.update(dt);
     this.control.update();
     this._applyViewReset(frameNow);
+    this._syncTour(frameNow);
 
     // 静态展示模式（display:'static'）冻结传送带/粒子等环境动画，让画面真正静止、可空闲省电；
     // dynamic / showcase 模式行为不变
@@ -1237,8 +1364,10 @@ export class SceneRuntime {
     const car = window.__carouselConfig;
     if (car.enabled && car.modelNames && car.modelNames.length > 1) {
       const cn = Date.now();
-      if (!window._carouselTs) window._carouselTs = cn;
-      if (cn - window._carouselTs > (car.interval || 8) * 1000) {
+      if (this._tour && this._tour.phase !== 'idle') {
+        window._carouselTs = cn;
+      } else if (!window._carouselTs) window._carouselTs = cn;
+      else if (cn - window._carouselTs > (car.interval || 8) * 1000) {
         window._carouselTs = cn;
         const names = car.modelNames;
         const cur = localStorage.getItem('factory-active-model') || names[0];
@@ -1356,6 +1485,8 @@ export class SceneRuntime {
       onSelect: (id) => {
         if (this._equipmentPickEnabled === false) return;
         this._setEquipmentSelection(id);
+        // 点中的是用户自己的设备。选中先落地，再停巡检，避免把这张卡清掉。
+        if (id && this._tour && this._tour.phase !== 'idle') this._userTakesCamera();
       },
       isTouchDoubleTap: (down, event) => this._isTouchPickDoubleTap(down, event),
       wasDragged: () => {
@@ -1446,6 +1577,7 @@ export class SceneRuntime {
     this.camera.near = Math.max(0.01, dist / 1200);
     this.camera.far = Math.max(1000, dist * 80);
     this.camera.updateProjectionMatrix();
+    this._userTakesCamera();
     this._beginCameraTween(frame.position, frame.target);
     return true;
   }
@@ -1485,6 +1617,7 @@ export class SceneRuntime {
   }
 
   _onEquipmentSelect(event) {
+    if (!this._selectionFromTour) this._tourOpenedCard = false;
     const id = event.detail?.id || null;
     if (id === this._selectedEquipmentId) return;
     this._selectedEquipmentId = id;
@@ -1523,6 +1656,10 @@ export class SceneRuntime {
       setEquipmentPickEnabled: (enabled) => rt.setEquipmentPickEnabled(enabled),
       equipmentFrame: (id) => rt.equipmentFrame(id),
       focusEquipment: (id) => rt.focusEquipment(id),
+      startTour: (stops, options) => rt.startTour(stops, options),
+      pauseTour: () => rt.pauseTour(),
+      resumeTour: () => rt.resumeTour(),
+      stopTour: () => rt.stopTour(),
       setStatusFilter: (status) => rt.setStatusFilter(status),
       raycastVisible: (clientX, clientY) => rt.raycastVisible(clientX, clientY),
       isHierarchyVisible: (object) => isHierarchyVisible(object),
@@ -1532,6 +1669,7 @@ export class SceneRuntime {
   // ── Cleanup ─────────────────────────────────────────────────────
 
   dispose() {
+    this.stopTour({ restoreView: false });
     this._unsubImport?.();
     this._unsubShowDefault?.();
     this._unsubReset?.();

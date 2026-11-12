@@ -33,6 +33,17 @@ describe('viewerCopy', () => {
     expect(viewerCopy.en.loadingModel).toBe('Parsing 3D model…');
     expect(viewerCopy.zh.perfBudget).toBe('性能预算');
     expect(viewerCopy.en.perfBudget).toBe('Performance budget');
+    expect(viewerCopy.zh.tour).toBe('巡检');
+    expect(viewerCopy.en.tour).toBe('Tour');
+    expect(viewerCopy.zh.tourPaused).toBe('已暂停');
+    expect(viewerCopy.en.tourPaused).toBe('Paused');
+  });
+
+  it('设置页巡检停留文案在中英 strings 里', () => {
+    const src = read('src/app.jsx');
+    expect(src).toContain("tourDwell:'巡检停留 (秒)'");
+    expect(src).toContain("tourDwell:'Tour dwell (sec)'");
+    expect(src).toContain('min="2" max="30"');
   });
 
   it('未知语言回落到中文', () => {
