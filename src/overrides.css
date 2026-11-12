@@ -690,3 +690,51 @@ main{padding:8px}
 .viewer-page .device-detail-panel{z-index:9}
 .viewer-page .view-actions .tour-bar{flex:1 0 100%;order:20;justify-content:center}
 }
+
+/* #68 告警事件条贴在 viewer 底部，面板从右下角弹出。级别色由行内 --alarm-level 传入，取值见 selectors.ALARM_LEVEL_COLOR。 */
+:root{
+  --alarm-critical:#ef4444;
+  --alarm-major:#f97316;
+  --alarm-warning:#facc15;
+}
+.viewer-page .view-actions{bottom:78px}
+.viewer-page .model-info-badge{bottom:124px}
+.alarm-center{position:absolute;inset:0;z-index:12;pointer-events:none}
+.alarm-strip,.alarm-panel{pointer-events:auto}
+.alarm-strip{position:absolute;left:12px;right:12px;bottom:30px;display:flex;align-items:center;gap:8px;min-height:36px;padding:6px 12px;border-radius:8px;border:1px solid rgba(100,150,220,.28);background:rgba(6,16,34,.92);color:#dbe8ff;font:13px "Noto Sans SC",sans-serif;text-align:left;cursor:pointer}
+.alarm-strip.is-open{border-color:rgba(107,159,255,.7)}
+.alarm-level-dot{width:8px;height:8px;border-radius:50%;background:var(--alarm-level,var(--alarm-major));flex:none;box-shadow:0 0 8px var(--alarm-level,var(--alarm-major))}
+.alarm-strip-text{display:flex;gap:8px;min-width:0;flex:1;overflow:hidden;white-space:nowrap}
+.alarm-strip-text b,.alarm-strip-text span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.alarm-strip-text span{color:var(--muted)}
+.alarm-strip-time{flex:none;color:var(--muted);font:12px "JetBrains Mono",ui-monospace,"Cascadia Code",Consolas,monospace}
+.alarm-strip-count{flex:none;min-width:22px;padding:1px 6px;border-radius:999px;background:rgba(239,68,68,.18);color:#fecaca;font:600 12px "JetBrains Mono",ui-monospace,"Cascadia Code",Consolas,monospace;text-align:center}
+.alarm-strip-empty{color:var(--muted)}
+.alarm-panel{position:absolute;right:16px;bottom:128px;width:min(440px,calc(100% - 32px));max-height:min(360px,42vh);display:flex;flex-direction:column;overflow:hidden;border-radius:10px;border:1px solid rgba(100,150,220,.28);background:rgba(6,16,34,.94);box-shadow:0 12px 36px rgba(0,0,0,.5);color:var(--text);font-family:"Noto Sans SC",sans-serif}
+.alarm-panel-head{display:flex;flex-direction:column;gap:8px;padding:8px 10px;border-bottom:1px solid rgba(100,150,220,.2)}
+.alarm-tabs,.alarm-filters{display:flex;flex-wrap:wrap;gap:6px}
+.alarm-tab,.alarm-filter,.alarm-ack,.alarm-clear{border:1px solid rgba(100,150,220,.35);background:rgba(18,38,68,.8);color:#dbe8ff;border-radius:999px;padding:3px 10px;font:12px "Noto Sans SC",sans-serif;cursor:pointer}
+.alarm-tab[aria-selected="true"],.alarm-filter[aria-pressed="true"]{border-color:#6B9FFF;color:#fff;background:rgba(107,159,255,.2)}
+.alarm-filter{display:inline-flex;align-items:center;gap:6px}
+.alarm-filter i{width:8px;height:8px;border-radius:50%;flex:none}
+.alarm-list{list-style:none;margin:0;padding:4px;overflow:auto}
+.alarm-empty{padding:12px 10px;color:var(--muted);font-size:12px}
+.alarm-row{display:grid;grid-template-columns:8px minmax(0,1fr) auto;grid-template-rows:auto auto;gap:2px 8px;align-items:center;padding:8px 8px;border-radius:8px;cursor:pointer;font:13px "Noto Sans SC",sans-serif}
+.alarm-row:hover{background:rgba(255,255,255,.06)}
+.alarm-row.is-acked{opacity:.78}
+.alarm-row>.alarm-level-dot{grid-column:1;grid-row:1 / span 2}
+.alarm-main{grid-column:2;grid-row:1;display:flex;gap:8px;min-width:0;align-items:baseline}
+.alarm-meta{grid-column:2;grid-row:2;display:flex;gap:8px;min-width:0;align-items:center}
+.alarm-level-label{color:var(--alarm-level,var(--alarm-major));font:600 12px "Noto Sans SC",sans-serif;white-space:nowrap}
+.alarm-device{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.alarm-message{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:12px;min-width:0}
+.alarm-time{color:var(--muted);font:11px "JetBrains Mono",ui-monospace,"Cascadia Code",Consolas,monospace;white-space:nowrap}
+.alarm-recovered{color:#86efac;font:600 11px "Noto Sans SC",sans-serif;font-style:normal;white-space:nowrap}
+.alarm-actions{grid-column:3;grid-row:1 / span 2;display:flex;gap:4px;justify-content:flex-end;align-self:center}
+.alarm-ack[aria-disabled="true"]{opacity:.45;cursor:default}
+@media (max-width:640px){
+.alarm-strip{left:0;right:0;bottom:0;border-radius:0;border-left:0;border-right:0;border-bottom:0}
+.alarm-strip-time{display:none}
+.alarm-strip-text{display:block}
+.alarm-panel{left:0;right:0;width:auto;bottom:40px;max-height:50vh;border-radius:12px 12px 0 0;border-left:0;border-right:0}
+}

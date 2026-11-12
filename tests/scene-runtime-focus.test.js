@@ -159,3 +159,58 @@ describe('SceneRuntime 设备取景与状态过滤', () => {
     expect(rt._statusFilter).toBeNull();
   });
 });
+
+describe('SceneRuntime 告警脉冲', () => {
+  it('pulseEquipment 到期后 emissiveIntensity 回到状态色原值', () => {
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshStandardMaterial({ color: 0x336699, emissive: 0x000000, emissiveIntensity: 0 }),
+    );
+    mesh.userData.equipmentId = 'eq-silo-a';
+    const model = new THREE.Group();
+    model.add(mesh);
+    const rt = loopStub(model, 'static');
+    rt._equipmentCatalog = [{ id: 'eq-silo-a', status: 'alarm', name: '原料仓 A' }];
+    rt._selectedEquipmentId = null;
+    rt._statusFilter = null;
+    rt._pulse = null;
+    rt._applyDeviceStatuses();
+    const base = mesh.material.emissiveIntensity;
+    expect(base).toBeCloseTo(0.75, 5);
+
+    const now = vi.spyOn(performance, 'now');
+    now.mockReturnValue(1_000);
+    rt._lastFrameTime = 1_000;
+    rt.pulseEquipment('eq-silo-a', 2400);
+    expect(rt._pulse).toMatchObject({ id: 'eq-silo-a', until: 3_400 });
+    expect(rt._pulse.meshes).toHaveLength(1);
+
+    let traversals = 0;
+    const originalTraverse = rt.model.traverse.bind(rt.model);
+    rt.model.traverse = (fn) => {
+      traversals += 1;
+      return originalTraverse(fn);
+    };
+    let sample = 1_050;
+    while (sample < 3_400 && Math.abs(Math.sin(sample * 0.006)) < 0.25) sample += 40;
+    now.mockReturnValue(sample);
+    rt._lastFrameTime = sample - 16;
+    rt._loop();
+    expect(traversals).toBe(0);
+    expect(mesh.material.emissiveIntensity).toBeGreaterThan(base);
+
+    now.mockReturnValue(3_400);
+    rt._lastFrameTime = 3_400 - 16;
+    rt._loop();
+    expect(mesh.material.emissiveIntensity).toBeCloseTo(base, 5);
+    expect(rt._pulse).toBeNull();
+
+    now.mockReturnValue(5_000);
+    rt.pulseEquipment('eq-silo-a', 2400);
+    expect(rt._pulse).not.toBeNull();
+    rt.setDeviceStatuses({ 'eq-silo-a': 'alarm' });
+    expect(rt._pulse).toBeNull();
+    expect(mesh.material.emissiveIntensity).toBeCloseTo(base, 5);
+    now.mockRestore();
+  });
+});
