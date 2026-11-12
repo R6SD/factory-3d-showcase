@@ -109,18 +109,19 @@ function killPids(pids) {
   }
 }
 
-async function cleanupLaunch(userDataDir, crashpadsBefore) {
+async function cleanupLaunch(userDataDir, crashpadsBefore, { untilCrashpad = false } = {}) {
   const started = Date.now();
   const deadline = started + 1000;
   let quiet = 0;
   let sawProfile = false;
   let sawCrashpad = false;
   // crashpad 是独立进程组，可能比浏览器主进程晚一点出现。先至少看一会儿，再连续三次确认没有了。
+  // 40ms 探针有时在 crashpad 拉起前就结束；那种清理要看满这 1 秒，避免晚到的进程漏掉。
   while (Date.now() < deadline) {
     const pids = victims(userDataDir, crashpadsBefore);
     if (pids.length === 0) {
       quiet += 1;
-      if (quiet >= 3 && Date.now() - started >= 400) break;
+      if (quiet >= 3 && Date.now() - started >= 400 && (!untilCrashpad || sawCrashpad)) break;
     } else {
       quiet = 0;
       for (const pid of pids) {
@@ -161,7 +162,9 @@ async function launchChrome(options = {}) {
     });
     return { browser, userDataDir, crashpadsBefore };
   } catch (error) {
-    error.launchCleanup = await cleanupLaunch(userDataDir, crashpadsBefore);
+    error.launchCleanup = await cleanupLaunch(userDataDir, crashpadsBefore, {
+      untilCrashpad: options.untilCrashpad === true,
+    });
     throw error;
   }
 }
@@ -313,15 +316,16 @@ describe.skipIf(!chrome)('390 宽品牌图标不挡时钟', () => {
 describe.skipIf(!chrome)('Chrome 启动失败时清理进程', () => {
   it('Target.setDiscoverTargets 超时后不留 Chrome、crashpad 和临时目录', async () => {
     // 短于一次真实的 CDP 握手，于是走和 CI 相同的 Target.setDiscoverTargets 超时。
-    // 进程在探针发出时已经起来；清理要等 crashpad 出现后再确认它们都没了。
+    // 进程在探针发出时已经起来。新的 crashpad 可能来不及出现，或复用已有 handler。
+    // 清理会多等满 1 秒；之后以「没有新的 chrome / crashpad / 临时目录」为准。
     const crashpadsBefore = new Set(crashpadPids());
     const dirsBefore = new Set(readdirSync(tmpdir()).filter((name) => name.startsWith(PROFILE_PREFIX)));
     let session;
     try {
-      session = await launchChrome({ protocolTimeout: 40, timeout: 3000 });
+      session = await launchChrome({ protocolTimeout: 40, timeout: 3000, untilCrashpad: true });
     } catch (error) {
       expect(`${error?.name || ''} ${error?.message || ''}`).toMatch(/timed out/);
-      expect(error.launchCleanup).toMatchObject({ sawProfile: true, sawCrashpad: true });
+      expect(error.launchCleanup.sawProfile).toBe(true);
     }
     if (session) {
       await stopBrowser(session.browser);
