@@ -6,6 +6,18 @@
 export const STORE_KEY = 'factory-workbench-v4';
 export const LEGACY_STORE_KEY = 'factory-workbench-v3';
 
+const SIMULATE_INTERVALS = [1000, 2000, 5000];
+
+function normalizeScene(scene) {
+  const merged = { ...defaults.scene, ...(scene && typeof scene === 'object' ? scene : {}) };
+  const ms = Number(merged.simulateMs);
+  return {
+    ...merged,
+    simulate: merged.simulate === true,
+    simulateMs: SIMULATE_INTERVALS.includes(ms) ? ms : defaults.scene.simulateMs,
+  };
+}
+
 export const defaults = {
   version: 4,
   language: 'zh',
@@ -25,6 +37,8 @@ export const defaults = {
     stereoMode: 'parallax', parallaxStrength: .4, parallaxAuto: false,
     // 查看页 UI 层流星氛围背景（纯 CSS、不影响 WebGL），可在“模型与场景”设置中关闭
     fxMeteors: true,
+    // 本地模拟器开关和节拍。实时读数不进这份配置，只留在内存覆盖层。
+    simulate: false, simulateMs: 2000,
   },
   carousel: { enabled: false, interval: 8, modelNames: [] },
 };
@@ -48,7 +62,7 @@ export function mergeConfig(data) {
       themeBg: branding.themeBg ?? null,
     },
     viewer,
-    scene: { ...defaults.scene, ...data.scene },
+    scene: normalizeScene(data.scene),
     carousel: { ...defaults.carousel, ...(data.carousel || {}) },
   };
 }

@@ -5,7 +5,7 @@
 | 版本 | **1.4.3**（`package.json` 的 `version`；Windows 文件编号 `1.4.3.0`） |
 | 日期 | **2026-10-19** |
 | 对照基线 | Git 标签 `v1.4.2`（`14d2386`）。版本号在提交 `7c51ebc`（2026-09-01，见 `CHANGELOG.md`）升到 1.4.3，其后合入 `main` 的 PR 没有再改版本号。 |
-| 本文对应的 `main` | `3aafd3f`（Merge PR #58）。`package.json` 版本仍是 1.4.3。文中「1.4.3」指 #23、#25 合入之前的行为，对应 `0dbb2cb`（Merge PR #18）。 |
+| 本文对应的 `main` | `21bab71`（Merge PR #67）。`package.json` 版本仍是 1.4.3。文中「1.4.3」指 #23、#25 合入之前的行为，对应 `0dbb2cb`（Merge PR #18）。 |
 
 本说明只记录 `v1.4.2` 之后已经出现在 `git log` 里的变更。未合并的 Issue 不写成已交付功能。
 
@@ -43,6 +43,10 @@
 | PR [#57](https://github.com/R6SD/factory-3d-showcase/pull/57) | Add title and theme background slots stored in IndexedDB | 设置「品牌与外观」把标题背景 `titleBg`（只铺顶栏底板）和主题背景 `themeBg`（壳层背景，不盖三维画布）分开存进 IndexedDB，可导入 PNG/JPG/WEBP 或清除回默认，导出不含图片像素，同页和 README 写清大标题、可选 Logo 与两槽的用途和推荐尺寸。[#51](https://github.com/R6SD/factory-3d-showcase/issues/51)、[#52](https://github.com/R6SD/factory-3d-showcase/issues/52) 已由 [#57](https://github.com/R6SD/factory-3d-showcase/pull/57) 修复。 |
 | PR [#59](https://github.com/R6SD/factory-3d-showcase/pull/59) | test: fix app-header-narrow CI timeout | 改 `tests/app-header-narrow.test.js`：直接启动 `chrome`，用可中止的请求轮询调试端口，页面改看 `document.readyState`，不再把「默认标题和短标题与时钟的间隙都 ≥ 0，无图标时铭牌仍居中」挂到 Vitest 默认 5000ms。这条超时原先把 CI 和 Pages 跑红。 |
 | PR [#58](https://github.com/R6SD/factory-3d-showcase/pull/58) | 精细化六台设备并守住性能预算 | 默认厂房六台设备改为分设备的程序化网格（料仓、传送带、主厂房、总装线、包装车间）。点选按设备打开详情，状态色和过滤压暗按设备生效；静态展示时机械臂停住。标准展示和静态展示的绘制调用/帧，10 秒内最大都是 57。与 [#57](https://github.com/R6SD/factory-3d-showcase/pull/57) 的标题背景、主题背景一起留在 `main`，背景槽不盖三维画布。[#48](https://github.com/R6SD/factory-3d-showcase/issues/48)、[#49](https://github.com/R6SD/factory-3d-showcase/issues/49) 已由 [#58](https://github.com/R6SD/factory-3d-showcase/pull/58) 修复。 |
+| PR [#62](https://github.com/R6SD/factory-3d-showcase/pull/62) | test: 修复 CI 上 Chrome 调试端口起不来 | 改 `tests/app-header-narrow.test.js`：`--remote-debugging-port=0`，由 Chrome 分配端口，再从用户目录的 `DevToolsActivePort` 读取，连 `127.0.0.1` 或 `::1`。stderr 写到文件；调试服务没起来时，错误带上 Chrome 日志。布局断言没有改。只改测试。 |
+| PR [#63](https://github.com/R6SD/factory-3d-showcase/pull/63) | 模拟实时数据与故障注入 | 设备状态和读数由内存里的本地模拟器推动。工具栏增加「模拟数据」（英文 Live sim），频率只接受 1s / 2s / 5s，默认关闭、2 秒一拍。温度超过 65 转为异常并着色，低于 60 才回到运行；待机和离线在未注入故障时不演化。模拟开启时，详情可以「注入故障」或「恢复」。注入立刻把该设备锁成异常，告警 `SIM-001`（温度 73）。`clearFault` 还原注入前的覆盖层快照；当时没有 patch 就回到台账，所以待机、离线恢复原来的状态和颜色。整个 feed 只有一个定时器；关闭模拟后停表、取消订阅并丢掉覆盖层。开关和频率写在场景配置里；实时读数和注入的故障不写 repository，也不写入业务 localStorage。[#43](https://github.com/R6SD/factory-3d-showcase/issues/43) 已由 [#63](https://github.com/R6SD/factory-3d-showcase/pull/63) 修复。 |
+| PR [#65](https://github.com/R6SD/factory-3d-showcase/pull/65) | docs(release): 记录 #43（PR #63）与 #62 | 变更表补上 #62、#63，并把当时的 `main` 基线写到 `cb87c9e`。只改文档。合入 `9c877d5`。 |
+| PR [#67](https://github.com/R6SD/factory-3d-showcase/pull/67) | test: 修复 narrow 用例的浏览器启动 | 改 `tests/app-header-narrow.test.js`：用 `puppeteer-core` 以 pipe 启动系统里已有的 Chrome，CDP 走管道，不再使用 `--remote-debugging-port`，也不再读 `DevToolsActivePort`。`puppeteer-core`（`^25.16.0`）只加在 `devDependencies`，不下载浏览器，不进运行时。布局断言没有改（仍是「默认标题和短标题与时钟的间隙都 ≥ 0，无图标时铭牌仍居中」）。只改测试和开发依赖，没有运行时或用户可见的变化。合入 `21bab71`。PR 上连续三次 CI 通过：[42673073719](https://github.com/R6SD/factory-3d-showcase/actions/runs/42673073719)、[42673229712](https://github.com/R6SD/factory-3d-showcase/actions/runs/42673229712)、[42673373040](https://github.com/R6SD/factory-3d-showcase/actions/runs/42673373040)。测试方在串行、并行和 CPU 打满下共 60/60 通过，并在基线 `9c877d5` 上用 4.5 秒的 Chrome 启动延迟复现了原来的「没有 DevToolsActivePort」。Chrome 启动挂起或超时时，进程和临时目录可能留下，见已知问题，不阻塞。 |
 
 展示端侧栏路由仍在 `src/app.jsx`：`/` 场地总览、`/models` 模型库、`/capacity` 产能看板、`/organization` 组织关系、`/settings` 设置中心。`/admin` 后端数据管理由 `src/app.jsx` 挂到该路径，页面在 `src/ui/admin/`。
 
@@ -50,30 +54,35 @@
 
 工作流名称是 **CI**，文件是 `.github/workflows/ci.yml`。触发条件：push 到 `main`，以及 pull request 目标分支为 `main`。作业 `test-and-build` 在 `ubuntu-latest`、Node 22 上执行 `npm ci`、`npm test`、`npm run build`。
 
-截至 2026-11-09，`main`（`3aafd3f`，含 #58）最近一次 CI **失败**：
+截至 2026-11-09，`main`（`21bab71`，Merge PR #67）最近一次 CI **成功**：
 
-- 运行：<https://github.com/R6SD/factory-3d-showcase/actions/runs/42660789152>
-- 时间：2026-11-09T17:02:59Z
-- 结论：`failure`（作业 `test-and-build`）
+- 运行：<https://github.com/R6SD/factory-3d-showcase/actions/runs/42676767900>
+- 时间：2026-11-09T18:45:03Z
+- 结论：`success`（作业 `test-and-build`：`npm ci`、`npm test`、`npm run build` 都通过）
 
-同一次推送触发的 **Deploy GitHub Pages**（`pages.yml`，不是 `ci.yml`）失败：<https://github.com/R6SD/factory-3d-showcase/actions/runs/42660789165>。这次 `ci.yml` 的 `npm test` 是 37 个文件、276 个测试：275 个通过，1 个失败。失败项是 `tests/app-header-narrow.test.js` 的「默认标题和短标题与时钟的间隙都 ≥ 0，无图标时铭牌仍居中」，错误是「Chrome 调试端口没有起来」，不是 5000ms 超时。`npm run build` 被跳过。`pages.yml` 的 Test 和 Build 通过，失败在 Setup Pages（`actions/configure-pages` 报 `Get Pages site failed` / `Not Found`）。Pages 仍未开通，站点 404，见下方已知问题。
+`gh run list --branch main` 显示，这条是 `main` 上最新的 **CI** 工作流：`headSha` 为 `21bab71d58014edc4a77541b57157dd842c8b1c4`，`conclusion` 为 `success`，运行编号 `42676767900`。
 
-下表数字来自在同一提交 `3aafd3f` 上的本地复跑（`npm ci && npm test && npm run build`），不是上面那次 CI。#30 没有验证：真机触屏（双击 / 手势）、长按出标签，以及 Electron（含 `npm run package:win`）。
+#67 合入之前，同一条 narrow 用例会把 `main` 跑红。`cb87c9e`（#63）的 CI 是 <https://github.com/R6SD/factory-3d-showcase/actions/runs/42667750904>，结论 `failure`：38 个文件、292 个测试里 291 个通过、1 个失败。失败项是 `tests/app-header-narrow.test.js` 的「默认标题和短标题与时钟的间隙都 ≥ 0，无图标时铭牌仍居中」，错误是「Chrome 调试端口没有起来 (没有 DevToolsActivePort)」，`npm run build` 被跳过。其后的文档合入 `9c877d5`（#65）没有改测试，CI 仍失败：<https://github.com/R6SD/factory-3d-showcase/actions/runs/42668908528>。#62（`d2d9222`）合入时自己的 CI 曾是绿的：<https://github.com/R6SD/factory-3d-showcase/actions/runs/42665151666>（37 个文件、276 个测试全部通过，`npm run build` 也通过）。#67 去掉对 `--remote-debugging-port` 和 `DevToolsActivePort` 的依赖。PR 上连续三次跑完测试的 CI 都通过：<https://github.com/R6SD/factory-3d-showcase/actions/runs/42673073719>、<https://github.com/R6SD/factory-3d-showcase/actions/runs/42673229712>、<https://github.com/R6SD/factory-3d-showcase/actions/runs/42673373040>。合入后的 `main`（`21bab71`）就是上面那条 `success`。
+
+同一次推送触发的 **Deploy GitHub Pages**（`pages.yml`，不是 `ci.yml`）失败：<https://github.com/R6SD/factory-3d-showcase/actions/runs/42676767983>。`pages.yml` 的 Test 和 Build 通过，失败在 Setup Pages（`actions/configure-pages` 报 `Get Pages site failed` / `Not Found`）。Pages 仍未开通，站点 404，见下方已知问题。
+
+下表数字来自在同一提交 `21bab71` 上的本地复跑（`npm ci && npm test && npm run build`），不是上面那次 CI。#30 没有验证：真机触屏（双击 / 手势）、长按出标签，以及 Electron（含 `npm run package:win`）。
 
 | 命令 | 退出码 | 结果 |
 |---|---|---|
-| `npm ci` | 0 | 安装 516 个包 |
-| `npm test` | 0 | 37 个文件、276 个测试：**276** 个通过。 |
-| `npm run build` | 0 | 构建完成，5.86s |
+| `npm ci` | 0 | 安装 537 个包（审计 538 个） |
+| `npm test` | 0 | 38 个文件、292 个测试：**292** 个通过。 |
+| `npm run build` | 0 | 构建完成，4.85s |
 
 ## 已知问题
 
 1. **照片管理只在桌面端。** Web 构建和 GitHub Pages 构建没有照片的浏览器回落。`/admin` → **照片库** 依赖 `GET/POST /api/photos`（Electron 本地服务）。`npm run dev` / `npm run preview` 下该接口不存在，列表为空；上传会提示「照片上传失败」。
 2. **没有 `/api` 时，Web 构建改用浏览器存储。** `GET /api/data/business`、`GET /api/config` 非成功时，业务数据写入 `localStorage` 键 `factory-business-v1`，配置写入 `factory-workbench-v4`。模型文件在 `/api/models` 不可用时写入 IndexedDB 库 `factory-model-library`。这两条接口 404 不表示页面崩溃。设置中心 → **数据与集成** 的来源文案为「浏览器本地存储」。桌面端来源文案为「本地后端服务（已落盘）」。
-3. **GitHub Pages 尚未在仓库设置里打开，预览地址还不是活的。** <https://r6sd.github.io/factory-3d-showcase/> 当前返回 HTTP 404。`main`（`3aafd3f`）上最近一次 Pages 部署失败：<https://github.com/R6SD/factory-3d-showcase/actions/runs/42660789165>（Test 与 Build 通过，失败在 Setup Pages，`actions/configure-pages` 报 `Get Pages site failed` / `Not Found`）。同一提交的 CI（<https://github.com/R6SD/factory-3d-showcase/actions/runs/42660789152>）也是红的：37 个文件、276 个测试里 275 个通过、1 个失败。失败项是 `tests/app-header-narrow.test.js` 的「默认标题和短标题与时钟的间隙都 ≥ 0，无图标时铭牌仍居中」，错误是「Chrome 调试端口没有起来」，`npm run build` 被跳过。需要仓库所有者在 Settings → Pages → Source 选择 **GitHub Actions** 之后才会发布。本交付不改仓库设置。
+3. **GitHub Pages 尚未在仓库设置里打开，预览地址还不是活的。** <https://r6sd.github.io/factory-3d-showcase/> 当前返回 HTTP 404（2026-11-09 用 `curl -sI` 核对，状态码 404）。`main`（`21bab71`）上最近一次 Pages 部署失败：<https://github.com/R6SD/factory-3d-showcase/actions/runs/42676767983>（Test 与 Build 通过，失败在 Setup Pages，`actions/configure-pages` 报 `Get Pages site failed` / `Not Found`）。同一提交的 CI（<https://github.com/R6SD/factory-3d-showcase/actions/runs/42676767900>）结论是 `success`。需要仓库所有者在 Settings → Pages → Source 选择 **GitHub Actions** 之后才会发布。本交付不改仓库设置。
 4. **[#20](https://github.com/R6SD/factory-3d-showcase/issues/20) 坏文件提示、exceljs 分包加载失败、IndexedDB 不可用。** 1.4.3 的行为：导入 0 字节或改名的 `.xlsx` 时，提示是「未解析到有效行：需包含“姓名”列」（产出记录为「需包含“日期、姓名、产量”列」，月度计划为「需包含“月份、计划产量”列」），容易理解成缺列，而不是文件无法解析。`src/data/sheet-io.js` 的 `loadWorkbook()`（`import('exceljs')`）在 try 外面，分包加载失败时会出现 unhandled rejection。IndexedDB 不可用（如隐私模式）时同样可能出现 unhandled rejection。已在 main 修复（#25），1.4.3 仍是旧行为。`main` 上无法读取的工作簿提示「文件无法解析，请检查格式」；分包加载失败提示「表格组件加载失败，请刷新页面后重试」；IndexedDB 打不开时展示页仍能打开，并显示「本地模型库不可用，已降级为本次会话」。
 5. **[#27](https://github.com/R6SD/factory-3d-showcase/issues/27) 双击归位动画被其他视角操作拉回；隐藏部件仍算命中。** 双击空白处后，680ms 归位动画进行中（大约一秒内）再点预设视角（「顶视图」「前视图」「侧视图」「默认视角」，或 `T` / `F` / `S`）或按 `R`，下一帧会被动画拉回初始机位；隐藏网格原来的位置双击不会归位。仅 main 曾出现，已由 #31 修复。1.4.3 没有双击归位，不受 #27 影响。
 6. **[#7](https://github.com/R6SD/factory-3d-showcase/issues/7) 设备拾取、状态色和详情侧栏。** 点击设备打开详情侧栏，并按状态着色。已在 main 修复（#30）。1.4.3 点击设备不会打开侧栏。[#8](https://github.com/R6SD/factory-3d-showcase/issues/8) 性能预算面板由 [#36](https://github.com/R6SD/factory-3d-showcase/pull/36) 合入后，三维页按钮是「性能预算」，不再是 **FPS**。1.4.3 仍是 1.3.0 起的 **FPS** 性能监控，不要在 1.4.3 演示里找 #8。
+7. **narrow 用例：Chrome 在启动阶段挂起或超时时，可能留下进程和临时目录。** #67 把 `tests/app-header-narrow.test.js` 改成用 `puppeteer-core` 的 pipe 启动之后，正常结束会关掉浏览器。若 Chrome 在 `puppeteer.launch` 里挂起或超时（启动还没返回），`stopBrowser` 的强杀不会执行，浏览器进程和 `/tmp/puppeteer_dev_chrome_profile-*` 会留下。这只出现在用例已经失败的时候，不改变布局断言，也不影响运行时或用户可见行为。CI 的 runner 结束时会被清掉。计划用后续的小 PR 处理。不阻塞当前 `main`（`21bab71` 的 CI [42676767900](https://github.com/R6SD/factory-3d-showcase/actions/runs/42676767900) 结论是 `success`）。
 
 ## 安装（Windows 桌面）
 

@@ -557,6 +557,13 @@ button.text.danger-text{color:#ff7a7a}
 .device-kpis dd{margin:2px 0 0;font:600 14px "JetBrains Mono",ui-monospace,"Cascadia Code",Consolas,monospace}
 .device-alarm{margin:0;padding:8px 10px;border-radius:8px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);font-size:12px;line-height:1.5}
 .device-alarm.quiet{background:rgba(255,255,255,.04);border-color:rgba(100,150,220,.15);color:var(--muted)}
+.device-fault-actions{display:flex;margin-top:10px}
+.device-fault-actions button{flex:1;padding:7px 10px;border-radius:8px;border:1px solid rgba(245,158,11,.45);background:rgba(245,158,11,.16);color:#ffd7a8;font:600 12px "Noto Sans SC";cursor:pointer}
+.device-fault-actions button:hover{background:rgba(245,158,11,.28)}
+.live-sim{display:inline-flex;align-items:center;gap:4px}
+.live-sim-toggle{display:inline-flex;align-items:center;background:rgba(18,57,78,.6);border:1px solid rgba(91,140,255,.35);color:#dbe8ff;padding:6px 10px;font:12px "Noto Sans SC";border-radius:6px;cursor:pointer;white-space:nowrap}
+.live-sim-toggle.active{border-color:#6B9FFF;color:#fff}
+.live-sim select{background:rgba(6,16,34,.82);color:#dbe8ff;border:1px solid rgba(91,140,255,.35);border-radius:6px;font:12px "Noto Sans SC";padding:5px 6px}
 
 /* ===== admin 布局修复：搜索栏 / 表单字段 / 表格横向滚动 ===== */
 .card-head{flex-wrap:wrap;gap:10px}

@@ -18,6 +18,8 @@ import { EVENTS, dispatch, listen } from './events.js';
 import { DeviceDetailPanel } from './ui/viewer/DeviceDetailPanel.jsx';
 import { WebGLFallback } from './ui/viewer/WebGLFallback.jsx';
 import { DeviceListPanel } from './ui/viewer/DeviceListPanel.jsx';
+import { LiveSimControls } from './ui/viewer/LiveSimControls.jsx';
+import { useLiveDevices } from './data/useLiveDevices.js';
 import { CompassHeadingMarks } from './ui/compass-headings.jsx';
 import { PerfBudgetPanel } from './ui/viewer/PerfBudgetPanel.jsx';
 import { Meteors, NumberTicker } from './ui/effects.jsx';
@@ -47,6 +49,10 @@ export function Scene(){
   const [notice,setNotice]=useState(''),[loading,setLoading]=useState(false),[dragOver,setDragOver]=useState(false),[selectedId,setSelectedId]=useState(null),[sceneReady,setSceneReady]=useState(false);
   const [webglOk,setWebglOk]=useState(()=>hasWebGL());
   const [progress,setProgress]=useState(null);
+  const statusKeyRef=useRef(null);
+  const baseDevices=listDevices(data);
+  const live=useLiveDevices(baseDevices,{enabled:config.scene.simulate===true,intervalMs:config.scene.simulateMs||2000});
+  const simulating=config.scene.simulate===true;
   useEffect(()=>{
     if(!webglOk)return;
     let runtime;
@@ -63,10 +69,13 @@ export function Scene(){
   },[]);
   useEffect(()=>{rt.current?.updateConfig(config.scene)},[config.scene]);
   useEffect(()=>{
-    const devices=listDevices(data);
+    const devices=live.devices;
+    const statusKey=devices.map(d=>d.id+':'+d.status).join('|');
+    if(statusKeyRef.current===statusKey)return;
+    statusKeyRef.current=statusKey;
     const map=Object.fromEntries(devices.map(d=>[d.id,{status:d.status,name:d.name}]));
     rt.current?.setDeviceStatuses(map);
-  },[data]);
+  },[live.devices]);
   useEffect(()=>listen(EVENTS.EQUIPMENT_SELECT,event=>setSelectedId(event.detail?.id||null)),[]);
   useEffect(()=>{
     const onKey=event=>{
@@ -78,12 +87,11 @@ export function Scene(){
     window.addEventListener('keydown',onKey);
     return()=>window.removeEventListener('keydown',onKey);
   },[]);
-  const devices=listDevices(data);
-  const device=getDevice(data,selectedId);
+  const device=getDevice({devices:live.devices},selectedId);
   const closeDevice=()=>dispatch(EVENTS.EQUIPMENT_SELECT,null);
   if(!webglOk)return <div className="viewer"><WebGLFallback/></div>;
   const reading=typeof progress==='number'&&progress<100;
-  return <div className={`viewer${dragOver?' drag-over':''}`}><div className="three" ref={host}/>{config.scene.fxMeteors!==false&&<Meteors/>}{loading&&<div className="loading-overlay"><div className="loading-spinner"/>{reading?<><p>{t.loadingProgress} {progress}%</p><progress max={100} value={progress}/></>:<p>{t.loadingModel}</p>}</div>}{dragOver&&<div className="drop-zone"><div className="drop-icon">⬆</div><p>{t.dropRelease}</p><small>{t.dropFormats}</small></div>}{notice&&<div className="notice">{notice}<button onClick={()=>setNotice('')}><X size={14}/></button></div>}<ModelSwitcher/><Compass3D/><div className="view-actions"><div className="view-presets"><button onClick={()=>window.__factorySceneRuntime?.setView('top')} title={t.viewTop}>T</button><button onClick={()=>window.__factorySceneRuntime?.setView('front')} title={t.viewFront}>F</button><button onClick={()=>window.__factorySceneRuntime?.setView('side')} title={t.viewSide}>S</button><button onClick={()=>window.__factorySceneRuntime?.setView('default')} title={t.viewDefault}><Settings2 size={13}/></button></div><StereoToggle/><DisplayModeToggle/><Outliner/><PerfBudgetPanel/><button onClick={()=>window.dispatchEvent(new Event('factory-reset'))}><Settings2 size={15}/>{t.reset}</button><button onClick={()=>window.__factorySceneRuntime?.screenshot()} title={t.screenshot}><Camera size={15}/>{t.screenshot}</button><button onClick={()=>document.querySelector('.viewer-page').requestFullscreen?.()} title={t.fullscreen}><Maximize2 size={15}/>{t.fullscreen}</button>{config.onlineScene?.url&&<button onClick={()=>setConfig(x=>({...x,onlineScene:{...x.onlineScene,enabled:true}}))}><Globe2 size={15}/>{t.onlineScene}</button>}</div><ModelInfoBadge/><DeviceListPanel devices={devices} selectedId={selectedId} runtime={sceneReady?rt.current:null} t={t} lang={config.language}/><DeviceDetailPanel device={device} lang={config.language} onClose={closeDevice}/></div>;
+  return <div className={`viewer${dragOver?' drag-over':''}`}><div className="three" ref={host}/>{config.scene.fxMeteors!==false&&<Meteors/>}{loading&&<div className="loading-overlay"><div className="loading-spinner"/>{reading?<><p>{t.loadingProgress} {progress}%</p><progress max={100} value={progress}/></>:<p>{t.loadingModel}</p>}</div>}{dragOver&&<div className="drop-zone"><div className="drop-icon">⬆</div><p>{t.dropRelease}</p><small>{t.dropFormats}</small></div>}{notice&&<div className="notice">{notice}<button onClick={()=>setNotice('')}><X size={14}/></button></div>}<ModelSwitcher/><Compass3D/><div className="view-actions"><div className="view-presets"><button onClick={()=>window.__factorySceneRuntime?.setView('top')} title={t.viewTop}>T</button><button onClick={()=>window.__factorySceneRuntime?.setView('front')} title={t.viewFront}>F</button><button onClick={()=>window.__factorySceneRuntime?.setView('side')} title={t.viewSide}>S</button><button onClick={()=>window.__factorySceneRuntime?.setView('default')} title={t.viewDefault}><Settings2 size={13}/></button></div><StereoToggle/><DisplayModeToggle/><Outliner/><PerfBudgetPanel/><button onClick={()=>window.dispatchEvent(new Event('factory-reset'))}><Settings2 size={15}/>{t.reset}</button><button onClick={()=>window.__factorySceneRuntime?.screenshot()} title={t.screenshot}><Camera size={15}/>{t.screenshot}</button><button onClick={()=>document.querySelector('.viewer-page').requestFullscreen?.()} title={t.fullscreen}><Maximize2 size={15}/>{t.fullscreen}</button>{config.onlineScene?.url&&<button onClick={()=>setConfig(x=>({...x,onlineScene:{...x.onlineScene,enabled:true}}))}><Globe2 size={15}/>{t.onlineScene}</button>}</div><ModelInfoBadge/><DeviceListPanel devices={live.devices} selectedId={selectedId} runtime={sceneReady?rt.current:null} t={t} lang={config.language}/><DeviceDetailPanel device={device} lang={config.language} onClose={closeDevice} onInjectFault={simulating?()=>live.injectFault(selectedId):undefined} onClearFault={simulating?()=>live.clearFault(selectedId):undefined} faulted={simulating&&!!selectedId&&live.faulted.has(selectedId)}/><LiveSimControls/></div>;
 }
 function ModelInfoBadge(){const [info,setInfo]=useState(null);useEffect(()=>{const update=()=>{const fn=window.__factorySceneRuntime&&window.__factorySceneRuntime.getModelInfo;if(fn){const i=fn();setInfo(i)}};update();const h=setInterval(update,1500);window.addEventListener('factory-active-model-change',update);window.addEventListener('factory-scene-ready',update);return()=>{clearInterval(h);window.removeEventListener('factory-active-model-change',update);window.removeEventListener('factory-scene-ready',update)}},[]);if(!info)return null;return <div className="model-info-badge"><span>{info.meshes} 网格</span><i/><span>{(info.tris/1000).toFixed(1)}k 三角面</span><i/><span>{info.materials} 材质</span></div>}
 function ModelSwitcher() {
