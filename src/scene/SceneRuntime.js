@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EVENTS, dispatch, listen } from '../events.js';
+import { sheetErrorMessage } from '../data/sheet-io.js';
 import { loadModelFile } from './ModelLoader.js';
 import { StereoPipeline, normalizePointer, damp, parallaxEyeOffset, autoSway } from './stereo.js';
 import { parallaxSettled, shouldRenderFrame, shouldUpdateShadow } from './render-policy.js';
@@ -188,7 +189,7 @@ export function setMeshDisplayMode(o, mode, pointSize = 0.03) {
 export class SceneRuntime {
   constructor(container, callbacks = {}) {
     this._root = container;
-    this._cb = callbacks; // { onNotice, onLoading, onDragOver, onModelLoaded }
+    this._cb = callbacks; // { onNotice, onLoading, onLoadProgress, onDragOver, onModelLoaded }
     this._sceneConfig = null;
 
     // Three.js objects
@@ -801,9 +802,13 @@ export class SceneRuntime {
     // 每次导入自增序号：连续快速导入 A、B 时，只提交最后一次请求（B），先返回的 A 作废
     const seq = ++this._importSeq;
     this._cb.onLoading?.(true);
+    // 还没读到字节。0 是真实起点，避免遮罩在第一片回来前误显示成「正在解析」。
+    this._cb.onLoadProgress?.(0);
     if (!silent) this._cb.onNotice?.(`正在加载 ${file.name}…`);
     try {
-      const loaded = await loadModelFile(file);
+      const loaded = await loadModelFile(file, {
+        onProgress: (p) => { if (seq === this._importSeq) this._cb.onLoadProgress?.(p); },
+      });
       // 等待解析期间又发起了更新的导入（或切回默认模型）：本次结果已过期，释放 GPU 资源后直接放弃
       if (seq !== this._importSeq) {
         this._disposeObject(loaded.object);
@@ -858,14 +863,18 @@ export class SceneRuntime {
       if (this._displayMode !== 'solid') this._applyDisplayMode(this.model);
       this._cb.onModelLoaded?.(file);
       if (!silent) this._cb.onNotice?.(`${file.name} 已载入`);
-    } catch {
-      // 过期请求的 reject 不再提示；只有最新一次导入失败才通知用户
+    } catch (err) {
+      // 过期请求的 reject 不再提示；只有最新一次导入失败才通知用户。
+      // 文案与表格导入共用 sheetErrorMessage，避免再写一份字符串。
       if (seq === this._importSeq) {
-        this._cb.onNotice?.('模型载入失败：请检查格式、资源引用和文件完整性');
+        this._cb.onNotice?.(sheetErrorMessage(err));
       }
     } finally {
       // 加载指示也只由最新请求收尾，避免过期请求提前关掉仍在进行的加载动画
-      if (seq === this._importSeq) this._cb.onLoading?.(false);
+      if (seq === this._importSeq) {
+        this._cb.onLoading?.(false);
+        this._cb.onLoadProgress?.(null);
+      }
     }
   }
 
@@ -875,6 +884,7 @@ export class SceneRuntime {
     // 切回默认模型同样使在途的异步导入作废，防止其晚返回后覆盖默认场景
     this._importSeq++;
     this._cb.onLoading?.(false); // 作废在途导入时一并关闭它可能开启的加载遮罩，避免卡住
+    this._cb.onLoadProgress?.(null);
     if (this.model) {
       this._dropEquipmentSelection();
       this.exitingModel = this.model;
