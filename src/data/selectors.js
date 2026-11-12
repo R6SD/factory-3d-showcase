@@ -66,6 +66,16 @@ const EQUIPMENT_STATUS_COLOR = Object.freeze({
 /** 统计条和列表的固定顺序：异常优先。 */
 export const STATUS_ORDER = ['alarm', 'down', 'idle', 'normal'];
 
+/**
+ * 告警中心级别色。严重红、重要橙、提示黄。
+ * 和设备运行状态色分开：运行态的 alarm 是琥珀，严重告警用离线红。
+ */
+export const ALARM_LEVEL_COLOR = Object.freeze({
+  critical: '#ef4444',
+  major: '#f97316',
+  warning: '#facc15',
+});
+
 /** @returns {{status,label,labelEn,emissive,emissiveIntensity,albedoScale}|null} */
 export function statusColor(status) {
   return EQUIPMENT_STATUS_COLOR[status] || null;
