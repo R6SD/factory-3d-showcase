@@ -5,7 +5,7 @@
  */
 
 /** @typedef {'normal'|'idle'|'down'|'alarm'} DeviceStatus */
-/** @typedef {{ oee?: number, throughput?: number, temp?: number }} DeviceKpi */
+/** @typedef {{ oee?: number, throughput?: number, temp?: number, vib?: number, power?: number }} DeviceKpi */
 /** @typedef {{ code: string, message: string }|null} DeviceAlarm */
 /** @typedef {{ status?: DeviceStatus, kpi?: DeviceKpi, alarm?: DeviceAlarm }} DevicePatch */
 /**
@@ -26,6 +26,10 @@ const TEMP_MIN = 20;
 const TEMP_MAX = 90;
 const OEE_MIN = 30;
 const OEE_MAX = 99;
+const VIB_MIN = 0;
+const VIB_MAX = 12;
+const POWER_MIN = 0;
+const POWER_MAX = 60;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -44,7 +48,9 @@ function walk(value, span, sample, min, max) {
 /**
  * 纯函数。只演化 normal / alarm。idle、down 在未注入故障时返回空 patch。
  * 温度游走 ±2，夹在 [20, 90]；OEE 游走 ±1.5，夹在 [30, 99]。
+ * 振动游走 ±0.6，夹在 [0, 12]；能耗游走 ±2，夹在 [0, 60]。
  * 超过 TEMP_ALARM 转 alarm；低于 TEMP_RECOVER 才回到 normal。中间带保持原状态。
+ * 注入故障时振动固定为 9.5。返回的 kpi 始终带上 vib 和 power。
  * @returns {DevicePatch}
  */
 export function stepDevice(device, { rng = Math.random, faulted = false } = {}) {
@@ -52,7 +58,13 @@ export function stepDevice(device, { rng = Math.random, faulted = false } = {}) 
   if (faulted) {
     return {
       status: 'alarm',
-      kpi: { oee: kpi.oee, throughput: kpi.throughput, temp: TEMP_ALARM + 8 },
+      kpi: {
+        oee: kpi.oee,
+        throughput: kpi.throughput,
+        temp: TEMP_ALARM + 8,
+        vib: 9.5,
+        power: kpi.power,
+      },
       alarm: { code: 'SIM-001', message: '模拟故障' },
     };
   }
@@ -61,6 +73,8 @@ export function stepDevice(device, { rng = Math.random, faulted = false } = {}) 
   const sample = typeof rng === 'function' ? rng : Math.random;
   const temp = walk(Number(kpi.temp) || 0, 2, sample(), TEMP_MIN, TEMP_MAX);
   const oee = walk(Number(kpi.oee) || 0, 1.5, sample(), OEE_MIN, OEE_MAX);
+  const vib = walk(Number(kpi.vib) || 0, 0.6, sample(), VIB_MIN, VIB_MAX);
+  const power = walk(Number(kpi.power) || 0, 2, sample(), POWER_MIN, POWER_MAX);
   let status = device.status;
   let alarm = device.alarm ?? null;
   if (temp > TEMP_ALARM) {
@@ -75,7 +89,7 @@ export function stepDevice(device, { rng = Math.random, faulted = false } = {}) 
   }
   return {
     status,
-    kpi: { oee, throughput: kpi.throughput, temp },
+    kpi: { oee, throughput: kpi.throughput, temp, vib, power },
     alarm,
   };
 }

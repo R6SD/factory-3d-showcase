@@ -259,8 +259,10 @@ export function restoreStatusMaterials(root) {
  * 只给“最近设备 id 落在 catalog 里”的网格着色，未登记的网格保持原材质。
  * filter 非空时，状态不匹配的网格套 DIM_SPEC，匹配的照常着色。
  * 当前选中的设备不压暗，否则侧栏打开了场景里仍看不出选中了谁。
+ * specOf(id) 返回图层色时覆盖状态色；返回 null / undefined，或调用方省略 specOf，仍用状态色。
+ * 压暗优先于图层色。
  */
-export function paintEquipmentStatuses(root, catalog, selectedId, filter = null) {
+export function paintEquipmentStatuses(root, catalog, selectedId, filter = null, specOf = null) {
   restoreStatusMaterials(root);
   if (!root?.traverse || !catalog?.length) return;
   const byId = new Map(catalog.map((device) => [device.id, device.status]));
@@ -272,7 +274,7 @@ export function paintEquipmentStatuses(root, catalog, selectedId, filter = null)
     const dimmed = filter != null && status !== filter && id !== selectedId;
     applyMeshStatus(node, status, {
       selected: id === selectedId,
-      spec: dimmed ? DIM_SPEC : undefined,
+      spec: dimmed ? DIM_SPEC : (specOf?.(id) ?? undefined),
     });
   });
 }

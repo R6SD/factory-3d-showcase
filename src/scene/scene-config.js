@@ -2,6 +2,7 @@
  * 工作台配置：默认值、加载与版本迁移。
  * 从 app.jsx 抽出为纯函数模块，供 React 层与单元测试共用，避免测试复制逻辑后与实现漂移。
  */
+import { LAYER_IDS } from './data-layers.js';
 
 export const STORE_KEY = 'factory-workbench-v4';
 export const LEGACY_STORE_KEY = 'factory-workbench-v3';
@@ -16,6 +17,7 @@ function normalizeScene(scene) {
     simulate: merged.simulate === true,
     simulateMs: SIMULATE_INTERVALS.includes(ms) ? ms : defaults.scene.simulateMs,
     tourDwell: clampTourDwell(merged.tourDwell),
+    dataLayer: LAYER_IDS.includes(merged.dataLayer) ? merged.dataLayer : defaults.scene.dataLayer,
   };
 }
 
@@ -42,6 +44,8 @@ export const defaults = {
     tourDwell: 5,
     // 本地模拟器开关和节拍。实时读数不进这份配置，只留在内存覆盖层。
     simulate: false, simulateMs: 2000,
+    // 设备着色图层。status 用状态色；temp / vib / power 按 KPI 热力着色。
+    dataLayer: 'status',
   },
   carousel: { enabled: false, interval: 8, modelNames: [] },
 };
