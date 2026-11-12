@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { defaults, loadConfig, mergeConfig, STORE_KEY } from '../src/scene/scene-config.js';
+import { clampTourDwell, defaults, loadConfig, mergeConfig, STORE_KEY } from '../src/scene/scene-config.js';
 
 // 内存版 Storage，避免依赖全局 localStorage
 function memoryStorage(initial = {}) {
@@ -26,6 +26,27 @@ describe('scene-config 默认值契约', () => {
     expect(defaults.scene.simulate).toBe(false);
     expect(defaults.scene.simulateMs).toBe(2000);
     expect(defaults.version).toBe(4);
+    expect(defaults.scene.tourDwell).toBe(5);
+  });
+});
+
+describe('巡检停留钳制', () => {
+  it('范围 2–30 秒，缺省和非法值回到 5', () => {
+    expect(clampTourDwell(undefined)).toBe(5);
+    expect(clampTourDwell('nope')).toBe(5);
+    expect(clampTourDwell(1)).toBe(2);
+    expect(clampTourDwell(2)).toBe(2);
+    expect(clampTourDwell(5.4)).toBe(5);
+    expect(clampTourDwell(30)).toBe(30);
+    expect(clampTourDwell(99)).toBe(30);
+  });
+
+  it('合并旧配置时补上并钳住 tourDwell', () => {
+    expect(mergeConfig({ version: 4, scene: { fov: 40 } }).scene.tourDwell).toBe(5);
+    expect(mergeConfig({ version: 4, scene: { tourDwell: 99 } }).scene.tourDwell).toBe(30);
+    expect(mergeConfig({ version: 4, scene: { tourDwell: 0 } }).scene.tourDwell).toBe(2);
+    expect(mergeConfig({ version: 4, scene: { fov: 40, tourDwell: 8 } }).scene.fov).toBe(40);
+    expect(mergeConfig({ version: 4, scene: { tourDwell: 8 } }).scene.tourDwell).toBe(8);
   });
 });
 

@@ -680,6 +680,11 @@ main{padding:8px}
 .device-list button.active{border-left-color:var(--status,#6B9FFF);background:rgba(107,159,255,.14)}
 .device-list-missing{padding:0 10px 6px 28px;color:#f59e0b;font-size:11px}
 .view-actions>button.device-list-toggle.active{border-color:#6B9FFF;color:#fff}
+.view-actions>button.tour-toggle[aria-pressed="true"]{border-color:#6B9FFF;color:#fff}
+.tour-bar{display:inline-flex;align-items:center;gap:6px}
+.tour-bar button{display:inline-flex;align-items:center;background:rgba(18,57,78,.6);border:1px solid rgba(91,140,255,.35);color:#dbe8ff;padding:6px 10px;font:12px "Noto Sans SC",sans-serif;border-radius:6px;cursor:pointer}
+.tour-stop,.tour-paused{font:12px "Noto Sans SC",sans-serif;color:#dbe8ff;white-space:nowrap}
+.tour-paused{color:#f6b957}
 @media (max-width:1100px){
 .device-status-bar{max-width:calc(100% - 32px)}
 /* 详情在 ≤1100 是底部抽屉（bottom:200px，最高 40vh）。列表停在它上方，避免盖住详情和工具栏。 */
@@ -691,4 +696,5 @@ main{padding:8px}
 /* 详情 bottom:250px、最高 168px。抽屉顶在统计条下，底停在详情之上。 */
 .viewer-page .device-list-panel{left:0;right:0;width:auto;top:108px;bottom:calc(250px + 168px + 12px);max-height:none;height:auto;border-radius:12px 12px 0 0}
 .viewer-page .device-detail-panel{z-index:9}
+.viewer-page .view-actions .tour-bar{flex:1 0 100%;order:20;justify-content:center}
 }

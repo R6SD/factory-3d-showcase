@@ -2,25 +2,168 @@
  * happy-dom 的 getBoundingClientRect 恒为 0，所以用本机 Chrome 量铭牌和时钟的间隙。
  * 没有 Chrome 时跳过。GitHub ubuntu 镜像自带 google-chrome，这个用例会在 CI 里真的跑。
  *
- * Chrome 只在 TCP 调试端口 bind 成功之后才把端口写进 DevToolsActivePort。
- * bind 失败，或浏览器还停在早期初始化时，进程不退出，文件也不会出现。
- * #59 和 #62 仍在等这个文件。这里改由 puppeteer-core 用 pipe 启动系统 Chrome，
- * CDP 走管道，不再读端口文件。管道在调试服务起来之前不会有响应，默认的
- * protocolTimeout 是 180 秒，Vitest 的 5 秒会先把用例掐掉，所以这里单独给出上限。
+ * puppeteer-core 用 pipe 启动，不读 DevToolsActivePort。pipe 没有单独的就绪信号，
+ * 第一条 CDP（Target.setDiscoverTargets）就是探针，时限是 protocolTimeout。
+ * #67 有一次整段用例 12.9s 仍成功；#73 的失败正好卡在当时的 15s 上限（15075ms）。
+ * 探针给 20s，盖住已经看到的慢启动，并且只对这种启动超时再试一次。
+ *
+ * launch 抛错时还没有 Browser。puppeteer 失败路径是未等待的优雅关闭，临时目录要等
+ * 浏览器进程退出才删。Vitest 的 fork 停不下来时会在 500ms 后 SIGKILL，exit 钩子不跑。
+ * Chrome 是 detached，crashpad 在另一个进程组，命令行里也没有用户目录，所以两者和
+ * 临时目录都会留下。这里按用户目录、子进程，以及启动前没有的 crashpad 杀掉再删目录。
+ * 用例超时盖住两次启动加清理，避免 fork 在清理完成前被掐掉。
  */
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import puppeteer from 'puppeteer-core';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { reserveActionsWidth } from '../src/ui/AppHeader.jsx';
 
 const chrome = ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser']
   .find((path) => existsSync(path));
 
+const LAUNCH_MS = 20_000;
+const ATTEMPTS = 2;
+const PROFILE_PREFIX = 'narrow-chrome-';
+// 两次探针加上停止浏览器和清进程的时间，要短于 Vitest 掐掉 fork 的时刻。
+const TEST_TIMEOUT_MS = ATTEMPTS * LAUNCH_MS + 8_000;
+
 function chromeBinary(path) {
   const real = realpathSync(path);
   const sibling = ['chrome', 'chromium'].map((name) => join(dirname(real), name)).find((candidate) => existsSync(candidate));
   return sibling || real;
+}
+
+function procPids() {
+  if (!existsSync('/proc')) return [];
+  const pids = [];
+  for (const name of readdirSync('/proc')) {
+    if (/^\d+$/.test(name)) pids.push(Number(name));
+  }
+  return pids;
+}
+
+function procCmdline(pid) {
+  try {
+    return readFileSync(`/proc/${pid}/cmdline`).toString('utf8');
+  } catch {
+    return '';
+  }
+}
+
+function procInfo(pid) {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
+    const after = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+    if (after[0] === 'Z') return null;
+    return { ppid: Number(after[1]), pgrp: Number(after[2]) };
+  } catch {
+    return null;
+  }
+}
+
+function crashpadPids() {
+  return procPids().filter((pid) => procCmdline(pid).includes('chrome_crashpad_handler'));
+}
+
+function profileProcesses() {
+  return procPids().filter((pid) => procCmdline(pid).includes(`/${PROFILE_PREFIX}`));
+}
+
+function victims(userDataDir, crashpadsBefore) {
+  const rows = [];
+  for (const pid of procPids()) {
+    const info = procInfo(pid);
+    if (!info) continue;
+    rows.push({ pid, ...info, cmd: procCmdline(pid) });
+  }
+  const marked = new Set();
+  for (const row of rows) {
+    const isProfile = row.cmd.includes(userDataDir);
+    const isNewCrashpad = row.cmd.includes('chrome_crashpad_handler') && !crashpadsBefore.has(row.pid);
+    if (isProfile || isNewCrashpad) marked.add(row.pid);
+  }
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const row of rows) {
+      if (!marked.has(row.pid) && marked.has(row.ppid)) {
+        marked.add(row.pid);
+        grew = true;
+      }
+    }
+  }
+  return [...marked];
+}
+
+function killPids(pids) {
+  const own = procInfo(process.pid)?.pgrp ?? -1;
+  for (const pid of pids) {
+    const info = procInfo(pid);
+    if (info && info.pgrp > 1 && info.pgrp !== own) {
+      try { process.kill(-info.pgrp, 'SIGKILL'); } catch { /* already gone */ }
+    }
+    try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+  }
+}
+
+async function cleanupLaunch(userDataDir, crashpadsBefore) {
+  const started = Date.now();
+  const deadline = started + 1000;
+  let quiet = 0;
+  let sawProfile = false;
+  let sawCrashpad = false;
+  // crashpad 是独立进程组，可能比浏览器主进程晚一点出现。先至少看一会儿，再连续三次确认没有了。
+  while (Date.now() < deadline) {
+    const pids = victims(userDataDir, crashpadsBefore);
+    if (pids.length === 0) {
+      quiet += 1;
+      if (quiet >= 3 && Date.now() - started >= 400) break;
+    } else {
+      quiet = 0;
+      for (const pid of pids) {
+        const cmd = procCmdline(pid);
+        if (cmd.includes(userDataDir)) sawProfile = true;
+        if (cmd.includes('chrome_crashpad_handler')) sawCrashpad = true;
+      }
+      killPids(pids);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 40));
+  }
+  await rm(userDataDir, { recursive: true, force: true }).catch(() => {});
+  killPids(victims(userDataDir, crashpadsBefore));
+  return { sawProfile, sawCrashpad };
+}
+
+function isStartupTimeout(error) {
+  return /timed out|timeout/i.test(`${error?.name || ''} ${error?.message || ''}`);
+}
+
+async function launchChrome(options = {}) {
+  const userDataDir = await mkdtemp(join(tmpdir(), PROFILE_PREFIX));
+  const crashpadsBefore = new Set(crashpadPids());
+  try {
+    const browser = await puppeteer.launch({
+      executablePath: chromeBinary(chrome),
+      headless: true,
+      pipe: true,
+      timeout: options.timeout ?? LAUNCH_MS,
+      protocolTimeout: options.protocolTimeout ?? LAUNCH_MS,
+      userDataDir,
+      defaultViewport: null,
+      handleSIGINT: false,
+      handleSIGTERM: false,
+      handleSIGHUP: false,
+      env: { ...process.env, DBUS_SESSION_BUS_ADDRESS: 'disabled:' },
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'],
+    });
+    return { browser, userDataDir, crashpadsBefore };
+  } catch (error) {
+    error.launchCleanup = await cleanupLaunch(userDataDir, crashpadsBefore);
+    throw error;
+  }
 }
 
 function page(title, icon) {
@@ -89,60 +232,64 @@ function measureExpr(title, icon) {
 async function stopBrowser(browser) {
   const proc = browser.process();
   const closed = browser.close().catch(() => {});
-  await Promise.race([
-    closed,
-    new Promise((resolve) => setTimeout(resolve, 1000)),
-  ]);
+  const giveUp = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  await Promise.race([closed, giveUp(1000)]);
   try { proc?.kill('SIGKILL'); } catch { /* already gone */ }
-  await closed;
+  await Promise.race([closed, giveUp(500)]);
+}
+
+async function runPage(browser, run) {
+  const [tab] = await browser.pages();
+  if (!tab) throw new Error('Chrome 没有页面目标');
+  const session = await tab.createCDPSession();
+  const call = (method, params) => session.send(method, params);
+  await call('Page.enable');
+  await call('Runtime.enable');
+  const written = await call('Runtime.evaluate', {
+    expression: `document.open(); document.write(${JSON.stringify(page('工厂智能可视化', true))}); document.close(); document.readyState`,
+    returnByValue: true,
+  });
+  if (written.exceptionDetails) throw new Error(JSON.stringify(written.exceptionDetails));
+  const ready = written.result?.value;
+  if (ready !== 'interactive' && ready !== 'complete') throw new Error(`document not ready: ${ready}`);
+  const measure = async (width, title, icon) => {
+    await call('Emulation.setDeviceMetricsOverride', {
+      width,
+      height: 900,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    const evaluated = await call('Runtime.evaluate', {
+      expression: measureExpr(title, icon),
+      returnByValue: true,
+    });
+    if (evaluated.exceptionDetails) throw new Error(JSON.stringify(evaluated.exceptionDetails));
+    return evaluated.result.value;
+  };
+  await run(measure);
 }
 
 async function withChrome(run) {
-  const browser = await puppeteer.launch({
-    executablePath: chromeBinary(chrome),
-    headless: true,
-    pipe: true,
-    timeout: 15000,
-    protocolTimeout: 15000,
-    defaultViewport: null,
-    handleSIGINT: false,
-    handleSIGTERM: false,
-    handleSIGHUP: false,
-    env: { ...process.env, DBUS_SESSION_BUS_ADDRESS: 'disabled:' },
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu'],
-  });
-  try {
-    const [tab] = await browser.pages();
-    if (!tab) throw new Error('Chrome 没有页面目标');
-    const session = await tab.createCDPSession();
-    const call = (method, params) => session.send(method, params);
-    await call('Page.enable');
-    await call('Runtime.enable');
-    const written = await call('Runtime.evaluate', {
-      expression: `document.open(); document.write(${JSON.stringify(page('工厂智能可视化', true))}); document.close(); document.readyState`,
-      returnByValue: true,
-    });
-    if (written.exceptionDetails) throw new Error(JSON.stringify(written.exceptionDetails));
-    const ready = written.result?.value;
-    if (ready !== 'interactive' && ready !== 'complete') throw new Error(`document not ready: ${ready}`);
-    const measure = async (width, title, icon) => {
-      await call('Emulation.setDeviceMetricsOverride', {
-        width,
-        height: 900,
-        deviceScaleFactor: 1,
-        mobile: false,
-      });
-      const evaluated = await call('Runtime.evaluate', {
-        expression: measureExpr(title, icon),
-        returnByValue: true,
-      });
-      if (evaluated.exceptionDetails) throw new Error(JSON.stringify(evaluated.exceptionDetails));
-      return evaluated.result.value;
-    };
-    await run(measure);
-  } finally {
-    await stopBrowser(browser);
+  let lastError;
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
+    let session;
+    try {
+      session = await launchChrome();
+    } catch (error) {
+      lastError = error;
+      if (attempt === ATTEMPTS || !isStartupTimeout(error)) throw error;
+      console.warn(`narrow Chrome 启动超时，清理后重试（${attempt}/${ATTEMPTS}）`);
+      continue;
+    }
+    try {
+      await runPage(session.browser, run);
+      return;
+    } finally {
+      await stopBrowser(session.browser);
+      await cleanupLaunch(session.userDataDir, session.crashpadsBefore);
+    }
   }
+  throw lastError;
 }
 
 describe.skipIf(!chrome)('390 宽品牌图标不挡时钟', () => {
@@ -160,5 +307,37 @@ describe.skipIf(!chrome)('390 宽品牌图标不挡时钟', () => {
         expect(wide.gap, `width ${width} ${JSON.stringify(wide)}`).toBeGreaterThanOrEqual(0);
       }
     });
-  }, 20000);
+  }, TEST_TIMEOUT_MS);
+});
+
+describe.skipIf(!chrome)('Chrome 启动失败时清理进程', () => {
+  it('Target.setDiscoverTargets 超时后不留 Chrome、crashpad 和临时目录', async () => {
+    // 短于一次真实的 CDP 握手，于是走和 CI 相同的 Target.setDiscoverTargets 超时。
+    // 进程在探针发出时已经起来；清理要等 crashpad 出现后再确认它们都没了。
+    const crashpadsBefore = new Set(crashpadPids());
+    const dirsBefore = new Set(readdirSync(tmpdir()).filter((name) => name.startsWith(PROFILE_PREFIX)));
+    let session;
+    try {
+      session = await launchChrome({ protocolTimeout: 40, timeout: 3000 });
+    } catch (error) {
+      expect(`${error?.name || ''} ${error?.message || ''}`).toMatch(/timed out/);
+      expect(error.launchCleanup).toMatchObject({ sawProfile: true, sawCrashpad: true });
+    }
+    if (session) {
+      await stopBrowser(session.browser);
+      await cleanupLaunch(session.userDataDir, session.crashpadsBefore);
+      throw new Error('40ms 内 Chrome 已应答，没有走到启动超时清理');
+    }
+    const dirsAfter = readdirSync(tmpdir()).filter((name) => name.startsWith(PROFILE_PREFIX) && !dirsBefore.has(name));
+    const leftover = procPids().filter((pid) => {
+      const cmd = procCmdline(pid);
+      return cmd.includes(`/${PROFILE_PREFIX}`) || (cmd.includes('chrome_crashpad_handler') && !crashpadsBefore.has(pid));
+    });
+    expect(dirsAfter).toEqual([]);
+    expect(leftover).toEqual([]);
+  }, 10_000);
+});
+
+afterAll(() => {
+  expect(profileProcesses()).toEqual([]);
 });
