@@ -35,7 +35,7 @@ export { createFactoryModel };
  *   getModel(), fit(), setView(), screenshot(), getModelInfo(), getHomeView()
  *   setDisplayMode(), getFps(), getModelTree(), focusNode(), toggleNodeVisible()
  *   setDeviceStatuses(map), clearDeviceStatuses(), setEquipmentPickEnabled(bool)
- *   equipmentFrame(id), focusEquipment(id), setStatusFilter(status|null)
+ *   equipmentFrame(id), focusEquipment(id), pulseEquipment(id, ms?), setStatusFilter(status|null)
  *   raycastVisible(clientX, clientY), isHierarchyVisible(object)
  *   updateConfig(sceneConfig), dispose()
  */
@@ -269,6 +269,8 @@ export class SceneRuntime {
     this._equipmentCatalog = null;
     this._selectedEquipmentId = null;
     this._statusFilter = null;
+    // 告警脉冲：{ id, until, meshes }。meshes 在开始时收集一次，循环里不再遍历整棵树。
+    this._pulse = null;
     this._equipRaycaster = null;
     this._equipPointer = null;
     this._unbindEquipmentPick = null;
@@ -681,6 +683,7 @@ export class SceneRuntime {
   }
 
   setDisplayMode(mode) {
+    this._clearPulse();
     this._displayMode = mode;
     this._applyDisplayMode(this.model);
   }
@@ -1430,6 +1433,8 @@ export class SceneRuntime {
     // Render（启用视差或双目立体时需要持续渲染）
     // 视差只在“阻尼未收敛 / 自动微摆 / 双目输出”时需要连续渲染；指针静止、偏移收敛后
     // 回到按需渲染，避免“视差开关常开”导致的逐帧空转
+    this._tickPulse(frameNow);
+
     const dualEye = this.stereo?.isDualEye ?? false;
     const pxSettled = !px.enabled || (!px.auto && parallaxSettled(px.curX, px.curY, px.targetX, px.targetY));
     const hasAnim = this.mixer || this.entranceStart > 0 || this.exitingModel || (!envPaused && this.model?.userData?.conveyor) || (!envPaused && this.model?.userData?.robots?.length);
@@ -1469,6 +1474,7 @@ export class SceneRuntime {
   }
 
   clearDeviceStatuses() {
+    this._clearPulse();
     this._writeStatusFilter(null, { apply: false });
     restoreStatusMaterials(this.model);
     restoreStatusMaterials(this.exitingModel);
@@ -1546,6 +1552,7 @@ export class SceneRuntime {
   }
 
   _applyDeviceStatuses() {
+    this._clearPulse();
     if (!this.model) return;
     if (this._equipmentCatalog) bindEquipmentIds(this.model, this._equipmentCatalog);
     paintEquipmentStatuses(this.model, this._equipmentCatalog || [], this._selectedEquipmentId, this._statusFilter);
@@ -1579,6 +1586,85 @@ export class SceneRuntime {
     return { position, target };
   }
 
+  /**
+   * 脉冲高亮这台设备当前的状态材质。不新增网格。
+   * 网格列表只在开始时收集一次。_loop 里按 base * (1 + 0.9 * |sin(t * 6)|) 调 emissiveIntensity。
+   * 到期后 _applyDeviceStatuses 还原。换模型或重新着色时清掉。
+   */
+  pulseEquipment(id, ms = 2400) {
+    if (id == null || id === '') return;
+    const duration = Number.isFinite(ms) && ms > 0 ? ms : 2400;
+    this._clearPulse();
+    this._pulse = {
+      id,
+      until: performance.now() + duration,
+      meshes: this._collectPulseMeshes(id),
+    };
+    this._needsRender = true;
+  }
+
+  /** 状态材质已经 clone 过。只记下这些网格，避免每帧 traverse。 */
+  _collectPulseMeshes(id) {
+    const model = this.model;
+    const meshes = [];
+    if (!model?.traverse || id == null || id === '') return meshes;
+    model.traverse((node) => {
+      if (!node.isMesh || equipmentIdOf(node) !== id) return;
+      const slots = [];
+      const seen = new Set();
+      const consider = (material) => {
+        if (!material || seen.has(material)) return;
+        seen.add(material);
+        if (!node.userData?._statusOrig || material === node.userData._statusOrig) return;
+        if (!material.emissive || typeof material.emissiveIntensity !== 'number') return;
+        slots.push({ material, base: material.emissiveIntensity });
+      };
+      const current = node.material;
+      if (Array.isArray(current)) current.forEach(consider);
+      else consider(current);
+      const solid = node.userData?.origMat;
+      if (Array.isArray(solid)) solid.forEach(consider);
+      else consider(solid);
+      if (slots.length) meshes.push({ mesh: node, slots });
+    });
+    return meshes;
+  }
+
+  /** 还原到脉冲开始时的 emissiveIntensity，并丢掉网格列表。 */
+  _clearPulse() {
+    const pulse = this._pulse;
+    if (!pulse) return;
+    this._pulse = null;
+    const meshes = pulse.meshes || [];
+    for (let i = 0; i < meshes.length; i += 1) {
+      const slots = meshes[i].slots || [];
+      for (let j = 0; j < slots.length; j += 1) {
+        const slot = slots[j];
+        if (slot?.material) slot.material.emissiveIntensity = slot.base;
+      }
+    }
+  }
+
+  /** 未到期就改强度并保持重绘；到期后重刷状态色。 */
+  _tickPulse(now) {
+    const pulse = this._pulse;
+    if (!pulse) return;
+    if (now >= pulse.until) {
+      this._applyDeviceStatuses();
+      return;
+    }
+    const meshes = pulse.meshes;
+    if (!meshes?.length) return;
+    const gain = 1 + 0.9 * Math.abs(Math.sin(now * 0.001 * 6));
+    for (let i = 0; i < meshes.length; i += 1) {
+      const slots = meshes[i].slots;
+      for (let j = 0; j < slots.length; j += 1) {
+        slots[j].material.emissiveIntensity = slots[j].base * gain;
+      }
+    }
+    this._needsRender = true;
+  }
+
   /** 缓动到设备。模型里没有时返回 false，不改当前机位。 */
   focusEquipment(id) {
     const frame = this.equipmentFrame(id);
@@ -1609,6 +1695,7 @@ export class SceneRuntime {
 
   /** 换模型前恢复旧材质并清选择。状态表保留，新模型装上后再套色。过滤一起清掉。 */
   _dropEquipmentSelection() {
+    this._clearPulse();
     this._writeStatusFilter(null, { apply: false });
     restoreStatusMaterials(this.model);
     this._selectedEquipmentId = null;
@@ -1666,6 +1753,7 @@ export class SceneRuntime {
       setEquipmentPickEnabled: (enabled) => rt.setEquipmentPickEnabled(enabled),
       equipmentFrame: (id) => rt.equipmentFrame(id),
       focusEquipment: (id) => rt.focusEquipment(id),
+      pulseEquipment: (id, ms) => rt.pulseEquipment(id, ms),
       startTour: (stops, options) => rt.startTour(stops, options),
       pauseTour: () => rt.pauseTour(),
       resumeTour: () => rt.resumeTour(),
