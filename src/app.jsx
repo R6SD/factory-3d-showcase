@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, Suspense } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { BarChart3, Boxes, Camera, ChevronLeft, ChevronRight, CircleUserRound, Cog, FileBox, FileUp, Gauge, GitBranch, Globe2, LayoutDashboard, Maximize2, Menu, PanelLeftClose, PanelLeftOpen, Search, Settings2, Upload, X } from 'lucide-react';
@@ -50,7 +50,7 @@ export function Scene(){
   const [webglOk,setWebglOk]=useState(()=>hasWebGL());
   const [progress,setProgress]=useState(null);
   const statusKeyRef=useRef(null);
-  const baseDevices=listDevices(data);
+  const baseDevices=useMemo(()=>listDevices(data),[data]);
   const live=useLiveDevices(baseDevices,{enabled:config.scene.simulate===true,intervalMs:config.scene.simulateMs||2000});
   const simulating=config.scene.simulate===true;
   useEffect(()=>{

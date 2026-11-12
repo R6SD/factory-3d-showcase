@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EVENTS, dispatch, listen } from '../events.js';
+import { sheetErrorMessage } from '../data/sheet-io.js';
 import { loadModelFile } from './ModelLoader.js';
 import { StereoPipeline, normalizePointer, damp, parallaxEyeOffset, autoSway } from './stereo.js';
 import { parallaxSettled, shouldRenderFrame, shouldUpdateShadow } from './render-policy.js';
@@ -777,6 +778,8 @@ export class SceneRuntime {
     // 每次导入自增序号：连续快速导入 A、B 时，只提交最后一次请求（B），先返回的 A 作废
     const seq = ++this._importSeq;
     this._cb.onLoading?.(true);
+    // 还没读到字节。0 是真实起点，避免遮罩在第一片回来前误显示成「正在解析」。
+    this._cb.onLoadProgress?.(0);
     if (!silent) this._cb.onNotice?.(`正在加载 ${file.name}…`);
     try {
       const loaded = await loadModelFile(file, {
@@ -836,10 +839,11 @@ export class SceneRuntime {
       if (this._displayMode !== 'solid') this._applyDisplayMode(this.model);
       this._cb.onModelLoaded?.(file);
       if (!silent) this._cb.onNotice?.(`${file.name} 已载入`);
-    } catch {
-      // 过期请求的 reject 不再提示；只有最新一次导入失败才通知用户
+    } catch (err) {
+      // 过期请求的 reject 不再提示；只有最新一次导入失败才通知用户。
+      // 文案与表格导入共用 sheetErrorMessage，避免再写一份字符串。
       if (seq === this._importSeq) {
-        this._cb.onNotice?.('模型载入失败：请检查格式、资源引用和文件完整性');
+        this._cb.onNotice?.(sheetErrorMessage(err));
       }
     } finally {
       // 加载指示也只由最新请求收尾，避免过期请求提前关掉仍在进行的加载动画

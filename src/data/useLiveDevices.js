@@ -44,8 +44,9 @@ export function useLiveDevices(baseDevices, { enabled = false, intervalMs = 2000
 
   useEffect(() => {
     if (!enabled) {
-      setPatches({});
-      setFaulted(new Set());
+      // 空数组每次都是新引用。这里若无条件 setState，会在台账尚未就绪时把 Scene 刷死。
+      setPatches((prev) => (prev && Object.keys(prev).length > 0 ? {} : prev));
+      setFaulted((prev) => (prev.size > 0 ? new Set() : prev));
       return undefined;
     }
     setPatches({});
