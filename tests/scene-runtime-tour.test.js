@@ -1,11 +1,16 @@
 /**
  * @vitest-environment happy-dom
  */
+import { act, createElement } from 'react';
+import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
-import { EVENTS, listen } from '../src/events.js';
+import { getDevice } from '../src/data/selectors.js';
+import { EVENTS, dispatch, listen } from '../src/events.js';
 import * as ModelLoader from '../src/scene/ModelLoader.js';
 import { SceneRuntime } from '../src/scene/SceneRuntime.js';
+import { DeviceDetailPanel } from '../src/ui/viewer/DeviceDetailPanel.jsx';
+import { DeviceListPanel } from '../src/ui/viewer/DeviceListPanel.jsx';
 
 const STOP = {
   id: 'eq-silo-a',
@@ -13,6 +18,29 @@ const STOP = {
   position: { x: 3, y: 2, z: 4 },
   target: { x: 0, y: 1, z: 0 },
   equipmentId: 'eq-silo-a',
+};
+
+const NEXT_STOP = {
+  id: 'next',
+  label: '下一站',
+  position: { x: 80, y: 10, z: -40 },
+  target: { x: 0, y: 1, z: 0 },
+  equipmentId: 'eq-next',
+};
+
+const TOUR_DEVICES = [
+  { id: 'eq-silo-a', name: '原料仓 A', status: 'alarm', line: '原料线', kpi: { oee: 71 } },
+  { id: 'eq-line-c', name: '总装线 C', status: 'down', line: '总装线 C', kpi: { oee: 41 } },
+];
+
+const LIST_COPY = {
+  deviceList: '设备列表',
+  allStatus: '全部',
+  sortBy: '排序',
+  sortStatus: '状态',
+  sortName: '名称',
+  sortOee: 'OEE',
+  notInModel: '模型中未找到',
 };
 
 function makeLoopRuntime() {
@@ -209,7 +237,7 @@ describe('SceneRuntime 巡检', () => {
     expect(rt.camera.position.distanceTo(new THREE.Vector3(30, 20, 40))).toBeGreaterThan(5);
   });
 
-  it.each(['t', 'f', 's', 'r', 'T', 'F', 'S', 'R'])('巡检中按 %s 后巡检停止，不再飞往下一视点', (key) => {
+  it.each(['t', 's', 'r', 'T', 'S', 'R'])('巡检中按 %s 后巡检停止，不再飞往下一视点', (key) => {
     const rt = makeLoopRuntime();
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(4, 2, 6));
     mesh.position.set(1, 1, 0);
@@ -282,4 +310,266 @@ describe('SceneRuntime 巡检', () => {
     expect(rt._viewReset.toPos).toEqual({ x: 1, y: 2, z: 3 });
     expect(rt._viewReset.toTarget).toEqual({ x: 0, y: 0.5, z: 0 });
   });
+
+  it('巡检中点设备列表的当前设备：巡检停止，选中保留，详情面板打开，之后不再飞走', () => {
+    const rt = makeLoopRuntime();
+    armEquipment(rt);
+    const selected = trackSelection();
+    const now = vi.spyOn(performance, 'now');
+    startDwelling(rt, now);
+    expect(selected.id).toBe('eq-silo-a');
+
+    clickListRow(rt, 'eq-silo-a');
+    expect(rt._tour.phase).toBe('idle');
+    expect(selected.id).toBe('eq-silo-a');
+    expect(rt._selectedEquipmentId).toBe('eq-silo-a');
+    expectDetailOpen(selected.id, 'eq-silo-a');
+
+    now.mockReturnValue(11_900);
+    rt._loop();
+    expect(rt._viewReset).toBeNull();
+    const held = rt.camera.position.clone();
+    now.mockReturnValue(20_000);
+    rt._loop();
+    now.mockReturnValue(28_000);
+    rt._loop();
+    expect(rt._tour.phase).toBe('idle');
+    expect(rt._viewReset).toBeNull();
+    expect(rt.camera.position.distanceTo(held)).toBeLessThan(0.05);
+    expect(rt.camera.position.distanceTo(new THREE.Vector3(80, 10, -40))).toBeGreaterThan(20);
+    expect(selected.id).toBe('eq-silo-a');
+    expectDetailOpen(selected.id, 'eq-silo-a');
+    selected.unlisten();
+  });
+
+  it('巡检中点 3D 设备：巡检停止，选中保留，详情面板打开，之后不再飞走', () => {
+    const rt = makeLoopRuntime();
+    const { canvas } = armEquipment(rt);
+    const selected = trackSelection();
+    const now = vi.spyOn(performance, 'now');
+    startDwelling(rt, now);
+    expect(selected.id).toBe('eq-silo-a');
+    rt.camera.updateMatrixWorld(true);
+    rt.model.updateMatrixWorld(true);
+
+    clickEquipment(canvas);
+    expect(rt._tour.phase).toBe('idle');
+    expect(rt._viewReset).toBeNull();
+    expect(selected.id).toBe('eq-line-c');
+    expect(rt._selectedEquipmentId).toBe('eq-line-c');
+    expectDetailOpen(selected.id, 'eq-line-c');
+
+    const held = rt.camera.position.clone();
+    now.mockReturnValue(20_000);
+    rt._loop();
+    now.mockReturnValue(28_000);
+    rt._loop();
+    expect(rt._tour.phase).toBe('idle');
+    expect(rt._viewReset).toBeNull();
+    expect(rt.camera.position.distanceTo(held)).toBeLessThan(0.05);
+    expect(rt.camera.position.distanceTo(new THREE.Vector3(80, 10, -40))).toBeGreaterThan(20);
+    expect(selected.id).toBe('eq-line-c');
+    expectDetailOpen(selected.id, 'eq-line-c');
+    selected.unlisten();
+  });
+
+  it('巡检中按 F 切换全屏并停止巡检，相机留在原地且不再飞往下一视点', () => {
+    const rt = makeLoopRuntime();
+    armEquipment(rt);
+    const selected = trackSelection();
+    const page = document.createElement('div');
+    page.className = 'viewer-page';
+    const requestFullscreen = vi.fn();
+    page.requestFullscreen = requestFullscreen;
+    document.body.append(page);
+    const now = vi.spyOn(performance, 'now');
+    startDwelling(rt, now);
+    expect(selected.id).toBe('eq-silo-a');
+    const before = rt.camera.position.clone();
+
+    rt._onKey({ key: 'F', target: { tagName: 'DIV' } });
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+    expect(rt._tour.phase).toBe('idle');
+    expect(rt._viewReset).toBeNull();
+    expect(selected.id).toBeNull();
+    expect(rt.camera.position.distanceTo(before)).toBeLessThan(0.05);
+    expect(rt.camera.position.distanceTo(new THREE.Vector3(0, 1, 8))).toBeLessThan(0.05);
+
+    const held = rt.camera.position.clone();
+    now.mockReturnValue(20_000);
+    rt._loop();
+    now.mockReturnValue(28_000);
+    rt._loop();
+    expect(rt._tour.phase).toBe('idle');
+    expect(rt._viewReset).toBeNull();
+    expect(rt.camera.position.distanceTo(held)).toBeLessThan(0.05);
+
+    rt._onKey({ key: 'f', target: { tagName: 'DIV' } });
+    expect(requestFullscreen).toHaveBeenCalledTimes(2);
+    expect(rt._tour.phase).toBe('idle');
+    page.remove();
+    selected.unlisten();
+  });
+
+  it('层级聚焦和双击归位停巡检，但不清用户自己的选中', () => {
+    const rt = makeLoopRuntime();
+    const { silo } = armEquipment(rt);
+    const selected = trackSelection();
+    dispatch(EVENTS.EQUIPMENT_SELECT, { id: 'eq-line-c' });
+    expect(selected.id).toBe('eq-line-c');
+    const now = vi.spyOn(performance, 'now');
+    now.mockReturnValue(4_000);
+    rt.camera.position.set(12, 8, 14);
+    rt.startTour([STOP, NEXT_STOP], { dwellMs: 5_000 });
+    expect(rt._tour.phase).toBe('flying');
+
+    rt.focusNode(silo.uuid);
+    expect(rt._tour.phase).toBe('idle');
+    expect(selected.id).toBe('eq-line-c');
+    expect(rt._selectedEquipmentId).toBe('eq-line-c');
+
+    now.mockReturnValue(5_000);
+    rt._homePosition = new THREE.Vector3(1, 2, 3);
+    rt._homeTarget = new THREE.Vector3(0, 0.5, 0);
+    rt.startTour([STOP], { dwellMs: 5_000 });
+    rt._beginViewReset();
+    expect(rt._tour.phase).toBe('idle');
+    expect(rt._viewReset.toPos).toEqual({ x: 1, y: 2, z: 3 });
+    expect(rt._viewReset.toTarget).toEqual({ x: 0, y: 0.5, z: 0 });
+    expect(selected.id).toBe('eq-line-c');
+    expect(rt._selectedEquipmentId).toBe('eq-line-c');
+    selected.unlisten();
+  });
+
+  it('停止巡检、层级聚焦和双击归位会关掉巡检自己弹出的卡片', () => {
+    const rt = makeLoopRuntime();
+    const { silo } = armEquipment(rt);
+    const selected = trackSelection();
+    const now = vi.spyOn(performance, 'now');
+    startDwelling(rt, now);
+    expect(selected.id).toBe('eq-silo-a');
+    rt.stopTour();
+    expect(rt._tour.phase).toBe('idle');
+    expect(selected.id).toBeNull();
+    expect(rt._selectedEquipmentId).toBeNull();
+
+    startDwelling(rt, now);
+    expect(selected.id).toBe('eq-silo-a');
+    rt.focusNode(silo.uuid);
+    expect(rt._tour.phase).toBe('idle');
+    expect(selected.id).toBeNull();
+
+    startDwelling(rt, now);
+    rt._homePosition = new THREE.Vector3(1, 2, 3);
+    rt._homeTarget = new THREE.Vector3(0, 0.5, 0);
+    rt._beginViewReset();
+    expect(rt._tour.phase).toBe('idle');
+    expect(selected.id).toBeNull();
+    expect(rt._viewReset.toPos).toEqual({ x: 1, y: 2, z: 3 });
+    selected.unlisten();
+  });
 });
+
+function armEquipment(rt) {
+  const silo = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshStandardMaterial());
+  silo.position.set(10, 0, 0);
+  silo.userData.equipmentId = 'eq-silo-a';
+  const line = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshStandardMaterial());
+  line.position.set(0, 1, 0);
+  line.userData.equipmentId = 'eq-line-c';
+  rt.model.add(silo, line);
+  rt.model.updateMatrixWorld(true);
+  const canvas = document.createElement('canvas');
+  canvas.getBoundingClientRect = () => ({
+    left: 0, top: 0, width: 200, height: 200, right: 200, bottom: 200, x: 0, y: 0, toJSON() { return {}; },
+  });
+  rt.renderer.domElement = canvas;
+  rt._equipmentPickEnabled = true;
+  rt._selectedEquipmentId = null;
+  rt._equipmentCatalog = null;
+  rt._statusFilter = null;
+  rt._tourOpenedCard = false;
+  rt._selectionFromTour = false;
+  rt._onEquipmentSelect = SceneRuntime.prototype._onEquipmentSelect.bind(rt);
+  rt._bindEquipmentPick();
+  return { canvas, silo, line };
+}
+
+function trackSelection() {
+  let selectedId = null;
+  const unlisten = listen(EVENTS.EQUIPMENT_SELECT, (event) => {
+    selectedId = event.detail?.id || null;
+  });
+  return {
+    get id() { return selectedId; },
+    unlisten,
+  };
+}
+
+function startDwelling(rt, now) {
+  now.mockReturnValue(10_000);
+  rt._lastFrameTime = 10_000;
+  rt.camera.position.set(12, 8, 14);
+  rt.startTour([
+    {
+      id: 'eq-silo-a',
+      label: '原料仓 A',
+      position: { x: 0, y: 1, z: 8 },
+      target: { x: 0, y: 1, z: 0 },
+      equipmentId: 'eq-silo-a',
+    },
+    NEXT_STOP,
+  ], { dwellMs: 5_000 });
+  now.mockReturnValue(11_200);
+  rt._loop();
+  expect(rt._tour.phase).toBe('dwelling');
+}
+
+function clickListRow(rt, id) {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  act(() => {
+    root.render(createElement(DeviceListPanel, {
+      devices: TOUR_DEVICES,
+      selectedId: null,
+      runtime: rt,
+      t: LIST_COPY,
+      lang: 'zh',
+    }));
+  });
+  act(() => {
+    host.querySelector('.device-list-toggle').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  act(() => {
+    host.querySelector(`[data-equipment-id="${id}"]`).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  act(() => root.unmount());
+  host.remove();
+}
+
+function clickEquipment(canvas) {
+  canvas.dispatchEvent(new PointerEvent('pointerdown', {
+    bubbles: true, button: 0, clientX: 100, clientY: 100, pointerType: 'mouse',
+  }));
+  canvas.dispatchEvent(new MouseEvent('click', {
+    bubbles: true, button: 0, detail: 1, clientX: 100, clientY: 100,
+  }));
+}
+
+function expectDetailOpen(selectedId, id) {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  act(() => {
+    root.render(createElement(DeviceDetailPanel, {
+      device: getDevice({ devices: TOUR_DEVICES }, selectedId),
+      onClose() {},
+    }));
+  });
+  expect(host.querySelector('.device-detail-panel')?.getAttribute('data-equipment-id')).toBe(id);
+  act(() => root.unmount());
+  host.remove();
+}

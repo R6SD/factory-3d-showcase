@@ -296,6 +296,9 @@ export class SceneRuntime {
     // 自动巡检。idle 时不改按需渲染；飞行靠已有的相机缓动把 _needsRender 置上。
     this._tour = createTour([]);
     this._tourSaved = null;
+    // 只有巡检自己派发的选中才算巡检弹出的卡片。用户再选时这个标记清掉，stopTour 不再关那张卡。
+    this._tourOpenedCard = false;
+    this._selectionFromTour = false;
 
     this._init();
   }
@@ -1038,11 +1041,24 @@ export class SceneRuntime {
     this._tour = tourStop(this._tour);
     this._tourSaved = null;
     if (this.control && saved) this.control.autoRotate = !!saved.autoRotate;
-    dispatch(EVENTS.EQUIPMENT_SELECT, null);
+    // 只收起巡检弹出的卡片。用户自己点中的设备留给详情面板。
+    if (this._tourOpenedCard) {
+      this._tourOpenedCard = false;
+      this._dispatchEquipmentSelect(null, true);
+    }
     if (restoreView && saved && this.camera && this.control) {
       this._beginCameraTween(saved.pos, saved.target);
     }
     this._emitTour();
+  }
+
+  _dispatchEquipmentSelect(detail, fromTour = false) {
+    this._selectionFromTour = fromTour;
+    try {
+      dispatch(EVENTS.EQUIPMENT_SELECT, detail);
+    } finally {
+      this._selectionFromTour = false;
+    }
   }
 
   _syncTour(now) {
@@ -1054,9 +1070,13 @@ export class SceneRuntime {
     this._tour = next;
     if (event === 'arrive') {
       const stop = next.stops[next.index];
-      if (stop?.equipmentId) dispatch(EVENTS.EQUIPMENT_SELECT, { id: stop.equipmentId });
+      if (stop?.equipmentId) {
+        this._tourOpenedCard = true;
+        this._dispatchEquipmentSelect({ id: stop.equipmentId }, true);
+      }
     } else if (event === 'leave') {
-      dispatch(EVENTS.EQUIPMENT_SELECT, null);
+      this._tourOpenedCard = false;
+      this._dispatchEquipmentSelect(null, true);
       const stop = next.stops[next.index];
       if (stop) this._beginCameraTween(stop.position, stop.target, next.flyMs);
     }
@@ -1175,9 +1195,12 @@ export class SceneRuntime {
   _onKey(e) {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     const key = typeof e.key === 'string' ? e.key.toLowerCase() : '';
-    // 与工具栏同一入口：T/F/S 走 setView，R 走重置视角。全屏仍由工具栏按钮触发。
+    // T/S 与工具栏同一入口走 setView，R 走重置视角。F 仍切全屏；巡检中这四键都会停巡检。
     if (key === 't') this.setView('top');
-    else if (key === 'f') this.setView('front');
+    else if (key === 'f') {
+      document.querySelector('.viewer-page')?.requestFullscreen?.();
+      if (this._tour && this._tour.phase !== 'idle') this._userTakesCamera();
+    }
     else if (key === 's') this.setView('side');
     else if (key === 'r') this._onReset();
     else if (key === 'l') {
@@ -1462,6 +1485,8 @@ export class SceneRuntime {
       onSelect: (id) => {
         if (this._equipmentPickEnabled === false) return;
         this._setEquipmentSelection(id);
+        // 点中的是用户自己的设备。选中先落地，再停巡检，避免把这张卡清掉。
+        if (id && this._tour && this._tour.phase !== 'idle') this._userTakesCamera();
       },
       isTouchDoubleTap: (down, event) => this._isTouchPickDoubleTap(down, event),
       wasDragged: () => {
@@ -1592,6 +1617,7 @@ export class SceneRuntime {
   }
 
   _onEquipmentSelect(event) {
+    if (!this._selectionFromTour) this._tourOpenedCard = false;
     const id = event.detail?.id || null;
     if (id === this._selectedEquipmentId) return;
     this._selectedEquipmentId = id;
