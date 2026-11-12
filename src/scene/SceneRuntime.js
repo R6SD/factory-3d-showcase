@@ -34,6 +34,7 @@ export { createFactoryModel };
  *   getModel(), fit(), setView(), screenshot(), getModelInfo(), getHomeView()
  *   setDisplayMode(), getFps(), getModelTree(), focusNode(), toggleNodeVisible()
  *   setDeviceStatuses(map), clearDeviceStatuses(), setEquipmentPickEnabled(bool)
+ *   setDataLayer(layerId, valuesById)
  *   equipmentFrame(id), focusEquipment(id), pulseEquipment(id, ms?), setStatusFilter(status|null)
  *   raycastVisible(clientX, clientY), isHierarchyVisible(object)
  *   updateConfig(sceneConfig), dispose()
@@ -268,6 +269,9 @@ export class SceneRuntime {
     this._equipmentCatalog = null;
     this._selectedEquipmentId = null;
     this._statusFilter = null;
+    // 数据图层。换模型时保留，新模型装上后 _applyDeviceStatuses 继续套色。
+    this._layer = 'status';
+    this._layerSpecs = null;
     // 告警脉冲：{ id, until, meshes }。meshes 在开始时收集一次，循环里不再遍历整棵树。
     this._pulse = null;
     this._equipRaycaster = null;
@@ -1545,7 +1549,13 @@ export class SceneRuntime {
     this._clearPulse();
     if (!this.model) return;
     if (this._equipmentCatalog) bindEquipmentIds(this.model, this._equipmentCatalog);
-    paintEquipmentStatuses(this.model, this._equipmentCatalog || [], this._selectedEquipmentId, this._statusFilter);
+    paintEquipmentStatuses(
+      this.model,
+      this._equipmentCatalog || [],
+      this._selectedEquipmentId,
+      this._statusFilter,
+      (id) => this._layerSpecs?.get(id) ?? null,
+    );
     this._needsRender = true;
   }
 
@@ -1668,6 +1678,23 @@ export class SceneRuntime {
     return true;
   }
 
+  /**
+   * 切换数据图层。valuesById 是 id → spec|null。
+   * null 表示这台设备继续用状态色（告警、停机，或当前就是状态图层）。
+   * 只改已有材质颜色，不新增网格。换模型不清这里。
+   */
+  setDataLayer(layerId, valuesById) {
+    this._layer = layerId;
+    const specs = new Map();
+    if (valuesById instanceof Map) {
+      for (const [id, spec] of valuesById) specs.set(id, spec ?? null);
+    } else if (valuesById && typeof valuesById === 'object') {
+      for (const [id, spec] of Object.entries(valuesById)) specs.set(id, spec ?? null);
+    }
+    this._layerSpecs = specs;
+    this._applyDeviceStatuses();
+  }
+
   /** 只高亮该状态；null 恢复全部。接着重刷设备色。 */
   setStatusFilter(status) {
     this._writeStatusFilter(status);
@@ -1748,6 +1775,7 @@ export class SceneRuntime {
       pauseTour: () => rt.pauseTour(),
       resumeTour: () => rt.resumeTour(),
       stopTour: () => rt.stopTour(),
+      setDataLayer: (layerId, valuesById) => rt.setDataLayer(layerId, valuesById),
       setStatusFilter: (status) => rt.setStatusFilter(status),
       raycastVisible: (clientX, clientY) => rt.raycastVisible(clientX, clientY),
       isHierarchyVisible: (object) => isHierarchyVisible(object),

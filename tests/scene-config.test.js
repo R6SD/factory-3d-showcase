@@ -25,6 +25,7 @@ describe('scene-config 默认值契约', () => {
     expect(defaults.scene.sunIntensity).toBeCloseTo(1.4, 5);
     expect(defaults.scene.simulate).toBe(false);
     expect(defaults.scene.simulateMs).toBe(2000);
+    expect(defaults.scene.dataLayer).toBe('status');
     expect(defaults.version).toBe(4);
     expect(defaults.scene.tourDwell).toBe(5);
   });
@@ -101,6 +102,14 @@ describe('loadConfig', () => {
     });
     expect(loadConfig(invalid).scene.simulate).toBe(false);
     expect(loadConfig(invalid).scene.simulateMs).toBe(2000);
+  });
+
+  it('dataLayer 只接受 status / temp / vib / power，非法值回到 status', () => {
+    expect(mergeConfig({ version: 4, scene: { dataLayer: 'temp' } }).scene.dataLayer).toBe('temp');
+    expect(mergeConfig({ version: 4, scene: { dataLayer: 'vib' } }).scene.dataLayer).toBe('vib');
+    expect(mergeConfig({ version: 4, scene: { dataLayer: 'power' } }).scene.dataLayer).toBe('power');
+    expect(mergeConfig({ version: 4, scene: { dataLayer: 'heatmap' } }).scene.dataLayer).toBe('status');
+    expect(mergeConfig({ version: 4, scene: { fov: 40 } }).scene.dataLayer).toBe('status');
   });
 
   it('旧配置没有标题背景和主题背景时补 null，已有 dataURL 图标保留', () => {

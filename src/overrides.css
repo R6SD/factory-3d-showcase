@@ -556,6 +556,29 @@ button.text.danger-text{color:#ff7a7a}
 .live-sim-toggle{display:inline-flex;align-items:center;background:rgba(18,57,78,.6);border:1px solid rgba(91,140,255,.35);color:#dbe8ff;padding:6px 10px;font:12px "Noto Sans SC";border-radius:6px;cursor:pointer;white-space:nowrap}
 .live-sim-toggle.active{border-color:#6B9FFF;color:#fff}
 .live-sim select{background:rgba(6,16,34,.82);color:#dbe8ff;border:1px solid rgba(91,140,255,.35);border-radius:6px;font:12px "Noto Sans SC";padding:5px 6px}
+.data-layer-switch{display:inline-flex;align-items:center}
+.data-layer-segments{display:inline-flex;border:1px solid rgba(91,140,255,.35);border-radius:6px;overflow:hidden}
+.view-actions .data-layer-segments button{background:rgba(18,57,78,.6);border:0;border-right:1px solid rgba(91,140,255,.28);border-radius:0;color:#dbe8ff;padding:6px 10px;font:12px "Noto Sans SC",sans-serif;cursor:pointer;white-space:nowrap}
+.view-actions .data-layer-segments button:last-child{border-right:0}
+.view-actions .data-layer-segments button.active{background:rgba(107,159,255,.38);color:#fff}
+.view-actions .data-layer-segments button:hover{background:rgba(30,84,110,.75)}
+.data-layer-menu{display:none;background:rgba(6,16,34,.82);color:#dbe8ff;border:1px solid rgba(91,140,255,.35);border-radius:6px;font:12px "Noto Sans SC",sans-serif;padding:5px 6px}
+.layer-legend{position:absolute;z-index:6;left:16px;bottom:136px;display:flex;flex-direction:column;gap:6px;width:188px;padding:8px 10px;border-radius:8px;border:1px solid rgba(100,150,220,.28);background:rgba(6,16,34,.9);color:#dbe8ff;font:11px "Noto Sans SC",sans-serif;pointer-events:none;box-shadow:0 10px 28px rgba(0,0,0,.35)}
+.layer-legend-scale{display:flex;justify-content:space-between;gap:8px;color:#93a8c8;font:10px "JetBrains Mono",ui-monospace,"Cascadia Code",Consolas,monospace}
+.layer-legend-bar{position:relative;margin-top:8px;height:8px}
+.layer-legend-ramp{display:block;height:8px;border-radius:4px}
+.layer-legend-tick{position:absolute;top:-6px;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:6px solid #eaf2ff;transform:translateX(-50%)}
+.layer-legend-priority,.layer-legend-missing{display:flex;align-items:center;gap:6px;margin:0}
+.layer-legend-priority i,.layer-legend-missing i{width:8px;height:8px;border-radius:2px;flex:none}
+.layer-legend-missing i{background:#8b95a7}
+@media (max-width:640px){
+.data-layer-segments{display:none}
+.data-layer-menu{display:inline-block}
+.layer-legend{left:8px;right:8px;bottom:48px;width:auto;max-width:none;flex-direction:row;align-items:center;gap:8px}
+.layer-legend-meter{flex:1;min-width:0}
+.layer-legend-priority,.layer-legend-missing{white-space:nowrap}
+.layer-legend-priority span,.layer-legend-missing span{overflow:hidden;text-overflow:ellipsis}
+}
 
 /* ===== admin 布局修复：搜索栏 / 表单字段 / 表格横向滚动 ===== */
 .card-head{flex-wrap:wrap;gap:10px}
