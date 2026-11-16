@@ -25,6 +25,7 @@ describe('scene-config 默认值契约', () => {
     expect(defaults.scene.sunIntensity).toBeCloseTo(1.4, 5);
     expect(defaults.scene.simulate).toBe(false);
     expect(defaults.scene.simulateMs).toBe(2000);
+    expect(defaults.scene.showPoi).toBe(true);
     expect(defaults.scene.dataLayer).toBe('status');
     expect(defaults.version).toBe(4);
     expect(defaults.scene.tourDwell).toBe(5);
@@ -102,6 +103,13 @@ describe('loadConfig', () => {
     });
     expect(loadConfig(invalid).scene.simulate).toBe(false);
     expect(loadConfig(invalid).scene.simulateMs).toBe(2000);
+  });
+
+  it('showPoi 默认打开，只有 false 会关掉', () => {
+    expect(mergeConfig({ version: 4, scene: { fov: 40 } }).scene.showPoi).toBe(true);
+    expect(mergeConfig({ version: 4, scene: { showPoi: false } }).scene.showPoi).toBe(false);
+    expect(mergeConfig({ version: 4, scene: { showPoi: true } }).scene.showPoi).toBe(true);
+    expect(mergeConfig({ version: 4, scene: { showPoi: 'no' } }).scene.showPoi).toBe(true);
   });
 
   it('dataLayer 只接受 status / temp / vib / power，非法值回到 status', () => {

@@ -36,7 +36,8 @@ export { createFactoryModel };
  *   setDisplayMode(), getFps(), getModelTree(), focusNode(), toggleNodeVisible()
  *   setDeviceStatuses(map), clearDeviceStatuses(), setEquipmentPickEnabled(bool)
  *   setDataLayer(layerId, valuesById)
- *   equipmentFrame(id), focusEquipment(id), pulseEquipment(id, ms?), setStatusFilter(status|null)
+ *   equipmentFrame(id), equipmentAnchor(id), focusEquipment(id), pulseEquipment(id, ms?), setStatusFilter(status|null)
+ *   subscribeFrame(fn), projectToScreen(vec3)
  *   raycastVisible(clientX, clientY), isHierarchyVisible(object)
  *   updateConfig(sceneConfig), dispose()
  */
@@ -275,6 +276,12 @@ export class SceneRuntime {
     this._layerSpecs = null;
     // 告警脉冲：{ id, until, meshes }。meshes 在开始时收集一次，循环里不再遍历整棵树。
     this._pulse = null;
+    // 铭牌锚点按设备 id 缓存。模型装载/切换、显隐和 _fit 时置脏。
+    this._anchorCache = null;
+    this._anchorDirty = true;
+    this._frameSubs = [];
+    this._projPoint = new THREE.Vector3();
+    this._projView = new THREE.Vector3();
     this._equipRaycaster = null;
     this._equipPointer = null;
     this._unbindEquipmentPick = null;
@@ -490,6 +497,7 @@ export class SceneRuntime {
   }
 
   _fit(obj, captureHome = this._captureHome) {
+    this._invalidateAnchors();
     this._userTakesCamera();
     const bounds = new THREE.Box3().setFromObject(obj);
     const size = bounds.getSize(new THREE.Vector3());
@@ -730,6 +738,7 @@ export class SceneRuntime {
     const m = this.model;
     if (!m) return;
     m.traverse((o) => { if (o.uuid === uuid) o.visible = !o.visible; });
+    this._invalidateAnchors();
     this._needsRender = true;
   }
 
@@ -846,6 +855,7 @@ export class SceneRuntime {
       this.scene.add(next);
       this._cancelViewReset();
       this.model = next;
+      this._invalidateAnchors();
       this._fit(this.model, true);
       // 模型入场景后再强制遍历一次，确保所有网格（含地面）启用阴影
       next.traverse((o) => {
@@ -902,6 +912,7 @@ export class SceneRuntime {
     this.scene.add(nm);
     this._cancelViewReset();
     this.model = nm;
+    this._invalidateAnchors();
     this._fit(this.model, true);
     this.model.userData.tScale = this.model.scale.clone();
     this.model.userData.tPos = this.model.position.clone();
@@ -1458,6 +1469,7 @@ export class SceneRuntime {
       this._renderedFrames++;
       this._lastCalls = this.renderer.info.render.calls;
       this._lastTris = this.renderer.info.render.triangles;
+      this._emitFrame();
     } else {
       this._skippedFrames++;
     }
@@ -1571,9 +1583,9 @@ export class SceneRuntime {
 
   /**
    * 可见网格里 equipmentId 命中 id 的并集包围盒。
-   * 取景方向和距离与 focusNode 相同。模型里没有这台设备时返回 null。
+   * 模型里没有这台设备，或网格都不可见时返回 null。
    */
-  equipmentFrame(id) {
+  _equipmentBox(id) {
     const model = this.model;
     if (!model?.traverse || id == null || id === '') return null;
     const box = new THREE.Box3();
@@ -1588,6 +1600,97 @@ export class SceneRuntime {
       found = true;
     });
     if (!found || box.isEmpty()) return null;
+    return box;
+  }
+
+  /** 模型装载/切换、toggleNodeVisible、_fit 时丢掉锚点缓存。 */
+  _invalidateAnchors() {
+    this._anchorDirty = true;
+    this._anchorCache = null;
+  }
+
+  /**
+   * 可见网格合并包围盒的顶面中心，再沿高度上移 8%。
+   * 入场缩放期间包围盒每帧都在变，这段不写入缓存。
+   */
+  equipmentAnchor(id) {
+    if (this.entranceStart > 0) return this._anchorFromBox(id);
+    if (this._anchorDirty || !this._anchorCache) {
+      this._anchorCache = new Map();
+      this._anchorDirty = false;
+    }
+    if (this._anchorCache.has(id)) return this._anchorCache.get(id);
+    const anchor = this._anchorFromBox(id);
+    this._anchorCache.set(id, anchor);
+    return anchor;
+  }
+
+  _anchorFromBox(id) {
+    const box = this._equipmentBox(id);
+    if (!box) return null;
+    const size = box.getSize(new THREE.Vector3());
+    return new THREE.Vector3(
+      (box.min.x + box.max.x) * 0.5,
+      box.max.y + size.y * 0.08,
+      (box.min.z + box.max.z) * 0.5,
+    );
+  }
+
+  /**
+   * 每次真正渲染后调用 fn(this)。返回取消订阅。
+   * 帧被跳过时不调用。
+   */
+  subscribeFrame(fn) {
+    if (typeof fn !== 'function') return () => {};
+    if (!Array.isArray(this._frameSubs)) this._frameSubs = [];
+    this._frameSubs.push(fn);
+    return () => {
+      const list = this._frameSubs;
+      if (!list) return;
+      const index = list.indexOf(fn);
+      if (index >= 0) list.splice(index, 1);
+    };
+  }
+
+  _emitFrame() {
+    const subs = this._frameSubs;
+    if (!subs || subs.length === 0) return;
+    const batch = subs.slice();
+    for (let i = 0; i < batch.length; i += 1) batch[i](this);
+  }
+
+  /**
+   * 世界坐标投到 canvas 像素。x/y 相对画布左上角。
+   * 点在相机背后，或投出视口时 visible 为 false。
+   */
+  projectToScreen(vec3) {
+    const camera = this.camera;
+    const canvas = this.renderer?.domElement;
+    const width = canvas?.clientWidth || canvas?.width || 0;
+    const height = canvas?.clientHeight || canvas?.height || 0;
+    if (!vec3 || !camera?.matrixWorldInverse || !(width > 0) || !(height > 0)) {
+      return { x: 0, y: 0, visible: false };
+    }
+    if (!this._projPoint) this._projPoint = new THREE.Vector3();
+    if (!this._projView) this._projView = new THREE.Vector3();
+    camera.updateMatrixWorld?.();
+    const world = this._projPoint.set(vec3.x, vec3.y, vec3.z);
+    const view = this._projView.copy(world).applyMatrix4(camera.matrixWorldInverse);
+    const behind = view.z >= 0;
+    world.project(camera);
+    const x = (world.x * 0.5 + 0.5) * width;
+    const y = (-world.y * 0.5 + 0.5) * height;
+    const inView = world.x >= -1 && world.x <= 1 && world.y >= -1 && world.y <= 1;
+    return { x, y, visible: !behind && inView };
+  }
+
+  /**
+   * 可见网格里 equipmentId 命中 id 的并集包围盒。
+   * 取景方向和距离与 focusNode 相同。模型里没有这台设备时返回 null。
+   */
+  equipmentFrame(id) {
+    const box = this._equipmentBox(id);
+    if (!box) return null;
     const size = box.getSize(new THREE.Vector3());
     const target = box.getCenter(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
@@ -1779,6 +1882,9 @@ export class SceneRuntime {
       clearDeviceStatuses: () => rt.clearDeviceStatuses(),
       setEquipmentPickEnabled: (enabled) => rt.setEquipmentPickEnabled(enabled),
       equipmentFrame: (id) => rt.equipmentFrame(id),
+      equipmentAnchor: (id) => rt.equipmentAnchor(id),
+      subscribeFrame: (fn) => rt.subscribeFrame(fn),
+      projectToScreen: (vec3) => rt.projectToScreen(vec3),
       focusEquipment: (id) => rt.focusEquipment(id),
       pulseEquipment: (id, ms) => rt.pulseEquipment(id, ms),
       startTour: (stops, options) => rt.startTour(stops, options),
@@ -1811,6 +1917,7 @@ export class SceneRuntime {
     this.renderer.domElement.removeEventListener('pointermove', this._onViewResetPointerMove);
     this.renderer.domElement.removeEventListener('pointerup', this._onViewResetPointerUp);
     this.renderer.domElement.removeEventListener('pointercancel', this._onViewResetPointerCancel);
+    this._frameSubs = [];
     this._unbindEquipmentPick?.();
     this._unbindEquipmentPick = null;
     this._unsubEquipmentSelect?.();

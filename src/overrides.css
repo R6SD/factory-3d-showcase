@@ -769,3 +769,17 @@ main{padding:8px}
 .alarm-strip-text{display:block}
 .alarm-panel{left:0;right:0;width:auto;bottom:40px;max-height:50vh;border-radius:12px 12px 0 0;border-left:0;border-right:0}
 }
+
+/* #70 设备头顶铭牌。HTML 叠加，不进 WebGL，所以不增加绘制调用。 */
+.poi-layer{position:absolute;inset:0;z-index:3;pointer-events:none}
+.poi{position:absolute;left:0;top:0;pointer-events:auto;transform:translate(-50%,-100%);display:inline-flex;align-items:center;gap:6px;max-width:9em;margin:0;padding:3px 8px 3px 6px;border:0;border-radius:6px;background:rgba(6,16,34,.78);color:#eaf2ff;font:12px/1.3 "Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;cursor:pointer;white-space:nowrap}
+.poi[hidden]{display:none}
+.poi span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.poi i{width:8px;height:8px;border-radius:50%;flex:none}
+.poi.active{outline:1px solid #6B9FFF;outline-offset:1px}
+.viewer>.view-actions{z-index:4}
+@media (max-width:640px){
+.poi{width:24px;height:24px;min-width:24px;min-height:24px;padding:0;justify-content:center;gap:0}
+.poi span{display:none}
+.poi i{width:10px;height:10px}
+}

@@ -5,7 +5,9 @@ import { createRoot } from 'react-dom/client';
 import { act, createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Ctx } from '../src/app-context.jsx';
+import { createFactoryModel } from '../src/scene/factory/index.js';
 import { PERF_BUDGET, budgetFooter, budgetLevel, formatBudgetCount } from '../src/scene/perf-budget.js';
+import { EquipmentPoi } from '../src/ui/viewer/EquipmentPoi.jsx';
 import { PerfBudgetPanel } from '../src/ui/viewer/PerfBudgetPanel.jsx';
 import { viewerCopy } from '../src/ui/viewer-strings.js';
 
@@ -317,5 +319,58 @@ describe('PerfBudgetPanel', () => {
     expect(row('trisFrame').querySelector('span').textContent).toBe(copy.perfTrisFrame);
     expect(row('stereo').querySelector('span').textContent).toBe(copy.perfStereo);
     expect(document.querySelector('.perf-overlay').textContent).toContain('Budget FPS≥50');
+  });
+});
+
+function drawCallBudget(model) {
+  const meshes = [];
+  model.traverse((object) => { if (object.isMesh) meshes.push(object); });
+  const casting = meshes.filter((mesh) => mesh.castShadow).length;
+  return meshes.length + casting + 3;
+}
+
+describe('铭牌不增加绘制调用', () => {
+  const devices = [
+    { id: 'eq-silo-a', name: '原料仓 A', status: 'alarm' },
+    { id: 'eq-silo-b', name: '原料仓 B', status: 'idle' },
+    { id: 'eq-bldg-mfg', name: '制造主厂房', status: 'normal' },
+    { id: 'eq-line-c', name: '总装线 C', status: 'down' },
+    { id: 'eq-bldg-pack', name: '包装车间', status: 'alarm' },
+    { id: 'eq-conveyor', name: '主传送带', status: 'normal' },
+  ];
+
+  it('打开和关闭铭牌时绘制调用预算相同，且不超过 120', () => {
+    const model = createFactoryModel();
+    const off = drawCallBudget(model);
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    const runtime = {
+      subscribeFrame: () => () => {},
+      equipmentAnchor: () => null,
+      projectToScreen: () => ({ x: 0, y: 0, visible: false }),
+      focusEquipment: () => {},
+    };
+    act(() => {
+      root.render(createElement(EquipmentPoi, {
+        devices,
+        runtime,
+        visible: true,
+        selectedId: null,
+        t: { showPoi: '铭牌' },
+        lang: 'zh',
+      }));
+    });
+    const on = drawCallBudget(model);
+    let sprites = 0;
+    model.traverse((object) => {
+      if (object.isSprite) sprites += 1;
+    });
+    act(() => root.unmount());
+    host.remove();
+    expect(on).toBe(off);
+    expect(sprites).toBe(0);
+    expect(on).toBeLessThanOrEqual(120);
+    expect(on).toBeGreaterThan(0);
   });
 });
