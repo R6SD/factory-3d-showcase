@@ -94,7 +94,13 @@ describe('回放接线', () => {
     expect(src).toContain('<DeviceListPanel devices={devices}');
     expect(src).toContain('getDevice({devices},selectedId)');
     expect(src).toContain('buildDefaultStops(runtime,devices)');
+    expect(src).toContain('<DataLayerSwitch devices={devices}');
+    expect(src).not.toContain('<DataLayerSwitch devices={live.devices}');
+    expect(src).toContain('rt.current?.setDataLayer(layerId,specs)');
+    expect(src).toContain('},[devices,config.scene.dataLayer]');
     const block = css.slice(css.indexOf('/* #71'));
+    expect(block).toContain('.viewer.is-replay .layer-legend{bottom:192px}');
+    expect(block).toContain('.viewer.is-replay .layer-legend{bottom:388px}');
     expect(block).toContain('@media (max-width:640px)');
     expect(block).toContain('grid-template-areas:"play track live" "speed time time"');
     expect(block).toContain('.replay-speed{grid-area:speed');
