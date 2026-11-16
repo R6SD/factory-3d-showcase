@@ -80,7 +80,7 @@ export function stepDevice(device, { rng = Math.random, faulted = false } = {}) 
   };
 }
 
-function applyPatch(device, patches) {
+export function applyPatch(device, patches) {
   const patch = device?.id != null ? patches[device.id] : undefined;
   if (!patch || typeof patch !== 'object' || Object.keys(patch).length === 0) return device;
   return {
@@ -89,6 +89,28 @@ function applyPatch(device, patches) {
     ...(patch.kpi ? { kpi: { ...device.kpi, ...patch.kpi } } : null),
     ...(Object.prototype.hasOwnProperty.call(patch, 'alarm') ? { alarm: patch.alarm } : null),
   };
+}
+
+/**
+ * 模拟器和历史回放共用的一拍。就地替换 state.patches，不修改 catalog。
+ * @param {{ patches: Record<string, DevicePatch> }} state
+ * @param {Array<{id?: string}>} catalog
+ * @param {() => number} rng
+ * @param {Set<string>} faulted
+ */
+export function advance(state, catalog, rng, faulted) {
+  const next = {};
+  const current = state?.patches && typeof state.patches === 'object' ? state.patches : {};
+  const list = Array.isArray(catalog) ? catalog : [];
+  for (const device of list) {
+    if (!device?.id) continue;
+    const patch = stepDevice(applyPatch(device, current), {
+      rng,
+      faulted: faulted?.has(device.id) === true,
+    });
+    if (patch && Object.keys(patch).length > 0) next[device.id] = patch;
+  }
+  state.patches = next;
 }
 
 /**
@@ -133,13 +155,9 @@ export function createSimulatedFeed(devices, { intervalMs = 2000, rng = Math.ran
   }
 
   function tick() {
-    const next = {};
-    for (const device of catalog) {
-      if (!device?.id) continue;
-      const patch = stepDevice(applyPatch(device, patches), { rng, faulted: faulted.has(device.id) });
-      if (patch && Object.keys(patch).length > 0) next[device.id] = patch;
-    }
-    patches = next;
+    const state = { patches };
+    advance(state, catalog, rng, faulted);
+    patches = state.patches;
     emit();
   }
 
