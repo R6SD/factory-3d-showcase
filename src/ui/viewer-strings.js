@@ -76,6 +76,13 @@ export const viewerCopy = {
     alarmAck: '确认',
     alarmClear: '清除',
     alarmRecovered: '已恢复',
+    replay: '回放',
+    replayLive: '回到实时',
+    replayPlay: '播放',
+    replayPause: '暂停',
+    replaySpeed: '倍速',
+    replayTimeline: '时间轴',
+    replayBadge: '回放中',
   },
   en: {
     screenshot: 'Screenshot',
@@ -150,6 +157,13 @@ export const viewerCopy = {
     alarmAck: 'Ack',
     alarmClear: 'Clear',
     alarmRecovered: 'Recovered',
+    replay: 'Replay',
+    replayLive: 'Back to live',
+    replayPlay: 'Play',
+    replayPause: 'Pause',
+    replaySpeed: 'Speed',
+    replayTimeline: 'Timeline',
+    replayBadge: 'Replaying',
   },
 };
 
