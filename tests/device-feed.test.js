@@ -19,10 +19,10 @@ function device(partial) {
     name: '一号机',
     status: 'normal',
     line: 'A',
-    kpi: { oee: 80, throughput: 10, temp: 40 },
+    kpi: { oee: 80, throughput: 10, temp: 40, vib: 2, power: 20 },
     alarm: null,
     ...partial,
-    kpi: { oee: 80, throughput: 10, temp: 40, ...partial.kpi },
+    kpi: { oee: 80, throughput: 10, temp: 40, vib: 2, power: 20, ...partial.kpi },
   };
 }
 
@@ -95,17 +95,36 @@ describe('stepDevice', () => {
     expect(cold.status).toBe('alarm');
     expect(cold.kpi.temp).toBe(TEMP_ALARM + 8);
     expect(cold.kpi.oee).toBe(80);
+    expect(cold.kpi.vib).toBe(9.5);
+    expect(cold.kpi.power).toBe(20);
     expect(cold.alarm).toEqual({ code: 'SIM-001', message: '模拟故障' });
 
-    const hot = stepDevice(device({ status: 'down', kpi: { temp: 90, oee: 41 } }), { rng: () => 1, faulted: true });
+    const hot = stepDevice(device({ status: 'down', kpi: { temp: 90, oee: 41, power: 4 } }), { rng: () => 1, faulted: true });
     expect(hot.status).toBe('alarm');
     expect(hot.kpi.temp).toBe(73);
+    expect(hot.kpi.vib).toBe(9.5);
+    expect(hot.kpi.power).toBe(4);
+    expect(hot.kpi).toEqual({ oee: 41, throughput: 10, temp: 73, vib: 9.5, power: 4 });
     expect(hot.alarm.code).toBe('SIM-001');
   });
 
+  it('normal 和 alarm 的 vib、power 留在夹取范围内，并且每次都带回', () => {
+    const up = stepDevice(device({ kpi: { vib: 11.5, power: 59, temp: 40 } }), { rng: () => 1, faulted: false });
+    expect(up.kpi.vib).toBe(12);
+    expect(up.kpi.power).toBe(60);
+    const down = stepDevice(device({ kpi: { vib: 0.2, power: 1, temp: 40 } }), { rng: () => 0, faulted: false });
+    expect(down.kpi.vib).toBe(0);
+    expect(down.kpi.power).toBe(0);
+    const held = stepDevice(
+      device({ kpi: { vib: 3.2, power: 18, temp: 40, oee: 80 } }),
+      { rng: sequenceRng([0.5, 0.5, 0.5, 0.5]), faulted: false },
+    );
+    expect(held.kpi).toEqual({ oee: 80, throughput: 10, temp: 40, vib: 3.2, power: 18 });
+  });
+
   it('idle 和 down 不演化', () => {
-    const idle = device({ status: 'idle', kpi: { temp: 80, oee: 91 } });
-    const down = device({ id: 'eq-down', status: 'down', kpi: { temp: 22, oee: 41 }, alarm: { code: 'E-118', message: '主轴停机' } });
+    const idle = device({ status: 'idle', kpi: { temp: 80, oee: 91, vib: 4, power: 12 } });
+    const down = device({ id: 'eq-down', status: 'down', kpi: { temp: 22, oee: 41, vib: 0.3, power: 0.5 }, alarm: { code: 'E-118', message: '主轴停机' } });
     const idleBefore = JSON.stringify(idle);
     const downBefore = JSON.stringify(down);
     expect(stepDevice(idle, { rng: () => 1, faulted: false })).toEqual({});

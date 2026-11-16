@@ -486,6 +486,36 @@ describe('状态材质备份与恢复', () => {
     expect(a.material).toBe(shared);
   });
 
+  it('传入 specOf 时用图层色，压暗仍是 DIM_SPEC，省略时保持状态色', () => {
+    const geo = new THREE.BoxGeometry(1, 1, 1);
+    const shared = new THREE.MeshStandardMaterial({ color: 0x112233, emissive: 0x000000, emissiveIntensity: 0 });
+    const conveyor = new THREE.Mesh(geo, shared);
+    conveyor.userData.equipmentId = 'eq-conveyor';
+    const silo = new THREE.Mesh(geo, shared.clone());
+    silo.userData.equipmentId = 'eq-silo-b';
+    const root = new THREE.Group();
+    root.add(conveyor, silo);
+    const catalog = [
+      { id: 'eq-conveyor', status: 'normal' },
+      { id: 'eq-silo-b', status: 'idle' },
+    ];
+    const layer = { emissive: '#2b6cff', emissiveIntensity: 0.55, albedoScale: 0.85 };
+    paintEquipmentStatuses(root, catalog, null, null, (id) => (id === 'eq-conveyor' ? layer : null));
+    expect(conveyor.material.emissive.getHexString()).toBe('2b6cff');
+    expect(conveyor.material.emissiveIntensity).toBeCloseTo(0.55);
+    expect(silo.material.emissive.getHexString()).toBe('60a5fa');
+
+    paintEquipmentStatuses(root, catalog, null, 'alarm', () => layer);
+    expect(conveyor.material.emissive.getHexString()).toBe('000000');
+    expect(conveyor.material.emissiveIntensity).toBe(0);
+    expect(silo.material.emissive.getHexString()).toBe('000000');
+    expect(silo.material.emissiveIntensity).toBe(0);
+
+    paintEquipmentStatuses(root, catalog, null);
+    expect(conveyor.material.emissive.getHexString()).toBe('22c55e');
+    expect(silo.material.emissive.getHexString()).toBe('60a5fa');
+  });
+
   it('未知状态不改材质', () => {
     const { shared, a } = pair();
     expect(applyMeshStatus(a, 'maintain')).toBe(false);

@@ -99,12 +99,12 @@ function seedOutputRecords(people, now = new Date(), monthsBack = 5) {
  */
 function seedDevices() {
   return [
-    { id: 'eq-conveyor', name: '主传送带', status: 'normal', line: '总装线 A', kpi: { oee: 86, throughput: 120, temp: 42 }, alarm: null },
-    { id: 'eq-silo-a', name: '原料仓 A', status: 'alarm', line: '原料线', kpi: { oee: 71, throughput: 80, temp: 68 }, alarm: { code: 'E-201', message: '校准延迟' } },
-    { id: 'eq-silo-b', name: '原料仓 B', status: 'idle', line: '原料线', kpi: { oee: 91, throughput: 76, temp: 36 }, alarm: null },
-    { id: 'eq-bldg-mfg', name: '制造主厂房', status: 'normal', line: '总装线 A', kpi: { oee: 88, throughput: 210, temp: 31 }, alarm: null },
-    { id: 'eq-line-c', name: '总装线 C', status: 'down', line: '总装线 C', kpi: { oee: 41, throughput: 0, temp: 22 }, alarm: { code: 'E-118', message: '主轴停机' } },
-    { id: 'eq-bldg-pack', name: '包装车间', status: 'alarm', line: '包装线', kpi: { oee: 64, throughput: 54, temp: 47 }, alarm: { code: 'E-305', message: '封箱气压不足' } },
+    { id: 'eq-conveyor', name: '主传送带', status: 'normal', line: '总装线 A', kpi: { oee: 86, throughput: 120, temp: 42, vib: 2.4, power: 28 }, alarm: null },
+    { id: 'eq-silo-a', name: '原料仓 A', status: 'alarm', line: '原料线', kpi: { oee: 71, throughput: 80, temp: 68, vib: 7.2, power: 34 }, alarm: { code: 'E-201', message: '校准延迟' } },
+    { id: 'eq-silo-b', name: '原料仓 B', status: 'idle', line: '原料线', kpi: { oee: 91, throughput: 76, temp: 36, vib: 1.1, power: 8 }, alarm: null },
+    { id: 'eq-bldg-mfg', name: '制造主厂房', status: 'normal', line: '总装线 A', kpi: { oee: 88, throughput: 210, temp: 31, vib: 1.6, power: 46 }, alarm: null },
+    { id: 'eq-line-c', name: '总装线 C', status: 'down', line: '总装线 C', kpi: { oee: 41, throughput: 0, temp: 22, vib: 0.4, power: 0.5 }, alarm: { code: 'E-118', message: '主轴停机' } },
+    { id: 'eq-bldg-pack', name: '包装车间', status: 'alarm', line: '包装线', kpi: { oee: 64, throughput: 54, temp: 47, vib: 4.5, power: 19 }, alarm: { code: 'E-305', message: '封箱气压不足' } },
   ];
 }
 
@@ -250,6 +250,8 @@ function normalizeDevice(d) {
       oee: Number(d?.kpi?.oee) || 0,
       throughput: Number(d?.kpi?.throughput) || 0,
       temp: Number(d?.kpi?.temp) || 0,
+      vib: Number(d?.kpi?.vib) || 0,
+      power: Number(d?.kpi?.power) || 0,
     },
     alarm,
   };
