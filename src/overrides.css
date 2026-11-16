@@ -769,3 +769,32 @@ main{padding:8px}
 .alarm-strip-text{display:block}
 .alarm-panel{left:0;right:0;width:auto;bottom:40px;max-height:50vh;border-radius:12px 12px 0 0;border-left:0;border-right:0}
 }
+
+/* #71 时间轴占据告警事件条的位置。回放时事件条上移，告警面板仍可展开。 */
+.replay-badge{position:absolute;z-index:14;top:16px;left:16px;padding:3px 10px;border-radius:999px;background:rgba(239,68,68,.92);color:#fff;font:600 12px "Noto Sans SC",sans-serif;letter-spacing:.08em;pointer-events:none}
+.replay-bar{position:absolute;z-index:13;left:12px;right:12px;bottom:30px;display:flex;align-items:center;gap:8px;min-height:36px;padding:6px 10px;border-radius:8px;border:1px solid rgba(100,150,220,.28);background:rgba(6,16,34,.92);color:#dbe8ff;font:13px "Noto Sans SC",sans-serif}
+.replay-bar button,.replay-speed{border:1px solid rgba(91,140,255,.35);background:rgba(18,57,78,.6);color:#dbe8ff;border-radius:6px;padding:4px 8px;font:12px "Noto Sans SC",sans-serif;cursor:pointer}
+.replay-speed{padding:4px 6px}
+.replay-track{position:relative;flex:1;min-width:0;display:flex;align-items:center}
+.replay-track input[type=range]{width:100%;margin:0}
+.replay-marks{position:absolute;left:0;right:0;top:-7px;height:6px;pointer-events:none}
+.replay-mark{position:absolute;top:0;width:2px;height:6px;background:#f59e0b;transform:translateX(-1px)}
+.replay-time{flex:none;font:12px "JetBrains Mono",ui-monospace,"Cascadia Code",Consolas,monospace;white-space:nowrap}
+.view-actions>button.replay-toggle.active{border-color:#f59e0b;color:#fff}
+.viewer.is-replay .alarm-strip{bottom:82px}
+.viewer.is-replay .alarm-panel{bottom:176px}
+.viewer.is-replay .view-actions{bottom:128px}
+.viewer.is-replay .model-info-badge{bottom:176px}
+.viewer.is-replay .layer-legend{bottom:192px}
+@media (max-width:640px){
+.replay-bar{left:0;right:0;bottom:0;border-radius:0;border-left:0;border-right:0;border-bottom:0;display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"play track live" "speed time time";align-items:center}
+.replay-play{grid-area:play}
+.replay-track{grid-area:track}
+.replay-live{grid-area:live}
+.replay-speed{grid-area:speed;justify-self:start}
+.replay-time{grid-area:time;justify-self:end}
+.viewer.is-replay .alarm-strip{left:0;right:0;bottom:84px;border-radius:0}
+.viewer.is-replay .alarm-panel{bottom:128px}
+.viewer.is-replay .view-actions{bottom:136px}
+.viewer.is-replay .layer-legend{bottom:388px}
+}
