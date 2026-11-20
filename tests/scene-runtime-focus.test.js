@@ -113,6 +113,34 @@ describe('SceneRuntime 机械臂动画', () => {
     expect(rt._renderedFrames).toBe(1);
     expect(jointSnapshot(model)).not.toEqual(before);
   });
+
+  it('subscribeFrame 只在真正渲染后按登记顺序调用', () => {
+    const model = createFactoryModel();
+    const rt = loopStub(model, 'static');
+    const seen = [];
+    const unsub = rt.subscribeFrame(() => seen.push('a'));
+    rt.subscribeFrame(() => seen.push('b'));
+    const now = vi.spyOn(performance, 'now');
+    now.mockReturnValue(1_000);
+    rt._lastFrameTime = 1_000;
+    rt._needsRender = false;
+    rt._loop();
+    expect(rt._skippedFrames).toBe(1);
+    expect(seen).toEqual([]);
+    rt._needsRender = true;
+    now.mockReturnValue(1_100);
+    rt._lastFrameTime = 1_000;
+    rt._loop();
+    expect(seen).toEqual(['a', 'b']);
+    unsub();
+    seen.length = 0;
+    rt._needsRender = true;
+    now.mockReturnValue(1_200);
+    rt._lastFrameTime = 1_100;
+    rt._loop();
+    expect(seen).toEqual(['b']);
+    now.mockRestore();
+  });
 });
 
 describe('SceneRuntime 设备取景与状态过滤', () => {
@@ -126,6 +154,40 @@ describe('SceneRuntime 设备取景与状态过滤', () => {
     expect(frame.target.z).toBeCloseTo(center.z, 5);
     expect(rt.equipmentFrame('missing')).toBeNull();
     expect(rt.equipmentFrame('eq-hidden')).toBeNull();
+  });
+
+  it('equipmentAnchor 的 y 等于包围盒顶面再加上高度的 8%', () => {
+    const { rt, mesh } = frameRuntime();
+    const box = new THREE.Box3().setFromObject(mesh);
+    const size = box.getSize(new THREE.Vector3());
+    const anchor = rt.equipmentAnchor('eq-silo-b');
+    expect(anchor).toBeInstanceOf(THREE.Vector3);
+    expect(anchor.y).toBeCloseTo(box.max.y + size.y * 0.08, 5);
+    expect(anchor.x).toBeCloseTo((box.min.x + box.max.x) / 2, 5);
+    expect(anchor.z).toBeCloseTo((box.min.z + box.max.z) / 2, 5);
+    expect(rt.equipmentAnchor('missing')).toBeNull();
+  });
+
+  it('隐藏设备后 equipmentAnchor 返回 null', () => {
+    const { rt, mesh } = frameRuntime();
+    expect(rt.equipmentAnchor('eq-silo-b')).not.toBeNull();
+    rt.toggleNodeVisible(mesh.uuid);
+    expect(mesh.visible).toBe(false);
+    expect(rt.equipmentAnchor('eq-silo-b')).toBeNull();
+  });
+
+  it('projectToScreen 对相机背后的点返回 visible:false', () => {
+    const { rt } = frameRuntime();
+    rt.renderer = { domElement: { clientWidth: 200, clientHeight: 100 } };
+    rt.camera.position.set(0, 0, 10);
+    rt.camera.lookAt(0, 0, 0);
+    rt.camera.updateMatrixWorld(true);
+    const behind = rt.projectToScreen(new THREE.Vector3(0, 0, 30));
+    const ahead = rt.projectToScreen(new THREE.Vector3(0, 0, 0));
+    expect(behind.visible).toBe(false);
+    expect(ahead.visible).toBe(true);
+    expect(ahead.x).toBeCloseTo(100, 3);
+    expect(ahead.y).toBeCloseTo(50, 3);
   });
 
   it('focusEquipment 把缓动终点写到设备中心', () => {

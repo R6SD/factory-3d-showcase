@@ -18,6 +18,7 @@ function normalizeScene(scene) {
     simulateMs: SIMULATE_INTERVALS.includes(ms) ? ms : defaults.scene.simulateMs,
     tourDwell: clampTourDwell(merged.tourDwell),
     dataLayer: LAYER_IDS.includes(merged.dataLayer) ? merged.dataLayer : defaults.scene.dataLayer,
+    showPoi: merged.showPoi !== false,
   };
 }
 
@@ -46,6 +47,8 @@ export const defaults = {
     simulate: false, simulateMs: 2000,
     // 设备着色图层。status 用状态色；temp / vib / power 按 KPI 热力着色。
     dataLayer: 'status',
+    // 设备头顶铭牌。与零件标签 labels-hidden 无关。
+    showPoi: true,
   },
   carousel: { enabled: false, interval: 8, modelNames: [] },
 };
